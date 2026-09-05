@@ -1,8 +1,8 @@
 # Delivery and release status
 
 This repository is private and the current bridge is a development preview,
-not a production release. Successful CI produces downloadable build artifacts;
-it does not publish to a browser store or authorize native/browser control.
+not a production release. Local builds produce installable development packages;
+they do not publish to a browser store or authorize production browser control.
 
 ## Repository ownership
 
@@ -20,22 +20,41 @@ an extension-only build as a complete installation.
 
 ## Prepared build workflow
 
-The initial GitHub login has `repo` but not `workflow` authorization. Therefore
-the source import contains an **inactive** template at
-[`docs/workflows/build.yml`](docs/workflows/build.yml); CI is not yet enabled
-and there are no remote build artifacts. The executable workflow is also ready
-locally at `.github/workflows/build.yml`, outside the initial commit.
-
-The owner can authorize workflow upload with:
+GitHub Actions is optional and is not a completion dependency. The owner has
+requested local delivery because Actions is rate-limited. Build on the Chrome
+computer with the existing Node and pinned Rust toolchain:
 
 ```sh
-gh auth refresh --hostname github.com --scopes workflow
+node scripts/build-local-delivery.mjs --connector /absolute/path/to/a0-connector --output /absolute/path/to/new-package-directory --cargo /absolute/path/to/cargo
 ```
 
-After that account authorization, copy the exact reviewed template into
-`.github/workflows/build.yml` if absent, commit and push it, and verify the first
-run and its artifacts. GitHub documents this separate permission in
-[OAuth scopes](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/scopes-for-oauth-apps).
+This builds both extension channels and the host's development companion using
+locked offline Rust dependencies. It emits a source-fingerprinted local package,
+checksum and install/update entry point for macOS or Linux; it does not install
+anything or touch Chrome profiles while building. Existing paired identities
+are preserved by the installer. Local source packaging is available independently
+of the optional workflow below. It does not claim signed production or Windows
+installer availability.
+
+To export matching Core and CLI source without changing their Git indexes or
+publishing their branches:
+
+```sh
+node scripts/export-source-handoff.mjs --core /absolute/path/to/agent-zero --connector /absolute/path/to/a0-connector --output /absolute/path/to/new-source-handoff
+```
+
+The handoff records exact base commits, full-index patches and hashes for every
+new file. Apply only to clean matching checkouts; never overwrite existing user
+files. Source availability is not production activation.
+
+The initial GitHub login has `repo` but not `workflow` authorization. Therefore
+the source import contains an **inactive** template at
+[`docs/workflows/build.yml`](docs/workflows/build.yml); CI is not enabled and
+local prerelease assets do not claim an Actions run. The executable workflow is also ready
+locally at `.github/workflows/build.yml`, outside the initial commit.
+
+No workflow authorization or Actions run is required for the local delivery
+above. The inactive template can remain unused while Actions is rate-limited.
 
 Once enabled, the `Extension build` workflow installs the lockfile, typechecks, runs the unit
 suite, builds both channels and checks their manifests and packaged assets.
@@ -54,7 +73,7 @@ Before enabling a production publishing workflow:
 2. Complete full runtime activation, mandatory transport lanes and safe migration.
 3. Build all supported native installers and payloads with the required platform
    signatures, release catalog signature, checksums, notices/SBOM and provenance.
-4. Configure approved public trust pins and protected CI signing authority.
+4. Configure approved public trust pins and protected local or CI signing authority.
    Never commit private signing keys, publisher credentials or pairing state.
 5. Verify coordinated CLI and Docker/WebUI host installation, one-time pairing,
    reconnect, scoped browser actions and owned-tab cleanup.

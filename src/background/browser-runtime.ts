@@ -39,6 +39,7 @@ import {
 import { createTabHandle, tabHandleBelongsToGeneration } from "./lifecycle";
 import { NativeRequestError, browserConnectionAuthorityKey, type NativeConnectionSnapshot } from "./native-port";
 import { ContentRuntimeHost } from "./content-host";
+import type { InputArtifactBinding, VerifiedInputArtifact } from "./input-artifact";
 import {
   ChromeScreenshotDebuggerHost,
   debuggerBindingForLease,
@@ -112,6 +113,7 @@ export const BROWSER_RUNTIME_ACTIONS = [
   "hover",
   "click",
   "type",
+  "upload_file",
   "status",
   "ensure",
 ] as const;
@@ -119,7 +121,7 @@ export const BROWSER_RUNTIME_ACTIONS = [
 // Every advertised action has an exact cross-layer codec. This subset is not
 // a claim that release trust or complete runtime activation is available.
 const implementedActions = new Set<string>(BROWSER_RUNTIME_ACTIONS);
-const mutatingActions = new Set<string>(["open", "navigate", "scroll", "screenshot", "hover", "click", "type"]);
+const mutatingActions = new Set<string>(["open", "navigate", "scroll", "screenshot", "hover", "click", "type", "upload_file"]);
 const supportedCapabilities = new Set<string>([
   ...BROWSER_RUNTIME_CAPABILITIES,
   ...BROWSER_RUNTIME_ACTIONS,
@@ -136,6 +138,7 @@ const ACTION_FEATURES: Record<string, readonly string[]> = {
   hover: ["tab_leases_v1", "semantic_dom_v1", "cursor_v1", "trusted_input_v1"],
   click: ["tab_leases_v1", "semantic_dom_v1", "cursor_v1", "trusted_input_v1"],
   type: ["tab_leases_v1", "semantic_dom_v1", "cursor_v1", "trusted_input_v1"],
+  upload_file: ["tab_leases_v1", "semantic_dom_v1", "cursor_v1", "trusted_input_v1", "artifacts_v1"],
   status: [],
   ensure: [],
 };
@@ -319,6 +322,7 @@ interface ApprovedNavigation {
 }
 
 export interface ArtifactOutputTransport {
+  inputArtifact?(binding: InputArtifactBinding, options: { timeoutMs: number; signal?: AbortSignal }): Promise<VerifiedInputArtifact>;
   artifactBegin(
     binding: OutputArtifactBinding,
     metadata: { mimeType: string; byteCount: number; sha256: string },
@@ -429,6 +433,8 @@ export class BrowserRuntime {
         return await this.hover(request);
       case "click":
         return await this.click(request);
+      case "upload_file":
+        return await this.click(request, true);
       case "type":
         return await this.type(request);
       default:
@@ -2508,9 +2514,17 @@ export class BrowserRuntime {
     }
   }
 
-  private async click(request: ScopedBrowserPerformRequest): Promise<Record<string, unknown>> {
+  private async click(request: ScopedBrowserPerformRequest, upload = false): Promise<Record<string, unknown>> {
     requireOriginGrant(request);
-    exactActionArgs(request.args, ["ref", "expected_action_class"]);
+    exactActionArgs(request.args, upload ? ["ref", "expected_action_class", "artifact_id", "mime_type", "byte_count", "sha256"] : ["ref", "expected_action_class"]);
+    if (upload && (request.args.expected_action_class !== "external_side_effect"
+      || typeof request.args.artifact_id !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/u.test(request.args.artifact_id)
+      || typeof request.args.mime_type !== "string" || !/^[a-z0-9!#$&^_.+-]+\/[a-z0-9!#$&^_.+-]+$/u.test(request.args.mime_type)
+      || !Number.isSafeInteger(request.args.byte_count) || Number(request.args.byte_count) < 1 || Number(request.args.byte_count) > 25 * 1024 * 1024
+      || typeof request.args.sha256 !== "string" || !/^sha256:[0-9a-f]{64}$/u.test(request.args.sha256)
+      || !this.artifactTransport.inputArtifact || !this.debuggerHost.setInputFile)) {
+      throw new NativeRequestError("Upload requires a verified bounded artifact and an exact file-input consumer.", "INVALID_STATE");
+    }
     if (
       typeof request.args.ref !== "string"
       || request.args.ref.length === 0
@@ -2533,7 +2547,7 @@ export class BrowserRuntime {
     if (lease.debuggerAttached) {
       throw new NativeRequestError("The exact lease has unresolved debugger cleanup debt.", "OUTCOME_UNKNOWN", "unknown");
     }
-    const mutation = await this.prepareLeasedMutation(request, "click");
+    const mutation = await this.prepareLeasedMutation(request, upload ? "upload_file" : "click");
     if (mutation.disposition === "replay_applied") {
       return {
         lease_id: lease.leaseId,
@@ -2549,6 +2563,7 @@ export class BrowserRuntime {
     let debuggerBinding: DebuggerLeaseBinding | null = null;
     let effectConfirmed = false;
     let effectiveClass: "reversible_input" | ConsequentialActionClass = "unknown";
+    let grantExpiresAtMs: number | null = null;
     try {
       this.assertOperationAuthority(request);
       this.assertNotCanceled(request);
@@ -2561,7 +2576,7 @@ export class BrowserRuntime {
         actionId: request.actionId,
         deadlineAtMs: request.deadlineAtMs,
         assertAuthority: () => this.assertOperationAuthority(request),
-        command: { name: "target.prepare_click", element_ref: reference },
+        command: { name: upload ? "target.prepare_upload" : "target.prepare_click", element_ref: reference },
       });
       const initial = this.parseClickTarget(prepared.result);
       effectiveClass = this.effectiveClickClass(expectedClass, initial.actionClass);
@@ -2578,6 +2593,8 @@ export class BrowserRuntime {
           effectiveClass,
           initial.targetFingerprint,
           mutation.canonicalParameterHash,
+          "none",
+          upload ? "Allow Agent Zero to share the selected attachment with this site? File selection can immediately upload it." : undefined,
         );
         stage = "waiting_approval";
         if (settlement.code || settlement.decision !== "approve_once" || !settlement.grant) {
@@ -2593,12 +2610,29 @@ export class BrowserRuntime {
         if (Date.now() >= settlement.grant.expiresAtMs) {
           throw new NativeRequestError("The exact click grant expired before input dispatch.", "CHALLENGE_EXPIRED");
         }
+        grantExpiresAtMs = settlement.grant.expiresAtMs;
       }
 
       this.assertOperationAuthority(request);
       this.assertNotCanceled(request);
       lease = this.refreshExactOperationLease(request, lease);
       await this.exactLeasedTab(lease);
+      let inputArtifact: VerifiedInputArtifact | null = null;
+      if (upload) {
+        inputArtifact = await this.artifactTransport.inputArtifact!({
+          contextId: request.contextId, browserSessionId: request.browserSessionId, turnId: request.turnId,
+          actionId: request.actionId, opId: request.opId, artifactId: String(request.args.artifact_id),
+        }, { timeoutMs: this.artifactTimeout(request) });
+        this.assertOperationAuthority(request);
+        this.assertNotCanceled(request);
+        if (inputArtifact.descriptor.sha256 !== request.args.sha256
+          || inputArtifact.descriptor.byte_count !== request.args.byte_count
+          || inputArtifact.descriptor.mime_type !== request.args.mime_type) {
+          throw new NativeRequestError("The private input does not match the approved attachment.", "INVALID_STATE");
+        }
+        lease = this.refreshExactOperationLease(request, lease);
+        await this.exactLeasedTab(lease);
+      }
       lease = { ...lease, debuggerAttached: true, revision: lease.revision + 1 };
       await this.persistLease(lease);
       debuggerBinding = debuggerBindingForLease(lease, request.actionId);
@@ -2609,21 +2643,37 @@ export class BrowserRuntime {
       this.assertNotCanceled(request);
       lease = this.refreshExactOperationLease(request, lease);
       await this.exactLeasedTab(lease);
-      const beforePress = await this.revalidateClickTarget(request, lease, reference, initial.targetFingerprint, initial.actionClass);
+      let beforePress = await this.revalidateClickTarget(request, lease, reference, initial.targetFingerprint, initial.actionClass, upload);
+      let uploadNode: number | null = null;
+      if (upload) {
+        uploadNode = await this.debuggerHost.resolveBackendNodeAtPoint(debuggerBinding, beforePress);
+        beforePress = await this.revalidateClickTarget(request, lease, reference, initial.targetFingerprint, initial.actionClass, true);
+        const currentNode = await this.debuggerHost.resolveBackendNodeAtPoint(debuggerBinding, beforePress);
+        if (currentNode !== uploadNode) throw new NativeRequestError("The approved file field changed.", "DOCUMENT_MISMATCH");
+      }
       await this.transitionMutationRecord(request.actionId, stage, "effect_started");
       stage = "effect_started";
       this.markEffectInvoked(request);
       this.assertOperationAuthority(request);
-      await this.debuggerHost.dispatchClickPhase(debuggerBinding, "mousePressed", beforePress);
+      if (upload) {
+        await this.debuggerHost.setInputFile!(debuggerBinding, uploadNode!, inputArtifact!, () => {
+          if (grantExpiresAtMs === null || Date.now() >= grantExpiresAtMs) throw new NativeRequestError("The attachment sharing approval expired.", "CHALLENGE_EXPIRED");
+          this.assertOperationAuthority(request);
+          this.assertNotCanceled(request);
+          this.refreshExactOperationLease(request, lease);
+        });
+      } else await this.debuggerHost.dispatchClickPhase(debuggerBinding, "mousePressed", beforePress);
       effectConfirmed = true;
 
       this.assertOperationAuthority(request);
       this.assertNotCanceled(request);
       lease = this.refreshExactOperationLease(request, lease);
       await this.exactLeasedTab(lease);
-      const beforeRelease = await this.revalidateClickTarget(request, lease, reference, initial.targetFingerprint, initial.actionClass);
-      this.assertOperationAuthority(request);
-      await this.debuggerHost.dispatchClickPhase(debuggerBinding, "mouseReleased", beforeRelease);
+      if (!upload) {
+        const beforeRelease = await this.revalidateClickTarget(request, lease, reference, initial.targetFingerprint, initial.actionClass);
+        this.assertOperationAuthority(request);
+        await this.debuggerHost.dispatchClickPhase(debuggerBinding, "mouseReleased", beforeRelease);
+      }
 
       lease = this.refreshExactOperationLease(request, lease);
       await this.exactLeasedTab(lease);
@@ -3105,6 +3155,7 @@ export class BrowserRuntime {
     reference: string,
     targetFingerprint: string,
     localClass: "reversible_input" | ConsequentialActionClass,
+    upload = false,
   ): Promise<{ x: number; y: number }> {
     this.assertOperationAuthority(request);
     const response = await this.contentHost.command(lease, {
@@ -3114,7 +3165,7 @@ export class BrowserRuntime {
       deadlineAtMs: request.deadlineAtMs,
       assertAuthority: () => this.assertOperationAuthority(request),
       command: {
-        name: "target.revalidate_click",
+        name: upload ? "target.revalidate_upload" : "target.revalidate_click",
         element_ref: reference,
         target_fingerprint: targetFingerprint,
       },
@@ -3734,7 +3785,7 @@ export class BrowserRuntime {
 
   private async prepareLeasedMutation(
     request: ScopedBrowserPerformRequest,
-    kind: "navigate" | "scroll" | "hover" | "click" | "type",
+    kind: "navigate" | "scroll" | "hover" | "click" | "type" | "upload_file",
   ): Promise<{ disposition: "apply" | "replay_applied"; canonicalParameterHash: string }> {
     const parameterHash = await sha256(stableJson({
       action: request.action,

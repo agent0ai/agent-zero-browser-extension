@@ -1,4 +1,5 @@
 import { BUILD_CHANNEL } from "../build-channel";
+import { parseCredentialStatus, type CredentialAction, type CredentialStatus } from "../protocol/credentials";
 import {
   buildHelloParams,
   buildPairingExchangeParams,
@@ -24,6 +25,9 @@ import {
 } from "../protocol/development-admission";
 import {
   buildContextListParams,
+  buildContextQueueAddParams, buildContextQueueItemParams, buildLocalApprovalParams,
+  parseContextQueueResult, parseLocalApprovalResult,
+  type ContextQueueResult, type LocalApprovalInput,
   buildContextSendMessageParams,
   buildContextSubscribeParams,
   buildContextUnsubscribeParams,
@@ -207,10 +211,12 @@ type PendingRequest = {
 };
 
 const INBOUND_METHODS = new Set<NativeMethod>([
+  "credential.changed",
   "bridge.ping",
   "context.snapshot",
   "context.event",
   "context.complete",
+  "context.queue_updated",
   "browser.perform",
   "browser.cancel",
   "browser.finalize_turn",
@@ -221,6 +227,7 @@ const INBOUND_METHODS = new Set<NativeMethod>([
 ]);
 
 const CLIENT_METHODS = new Set<NativeMethod>([
+  "credential.rotate", "credential.status", "credential.revoke",
   "pairing.status",
   "pairing.exchange",
   "pairing.disconnect",
@@ -229,6 +236,7 @@ const CLIENT_METHODS = new Set<NativeMethod>([
   "context.subscribe",
   "context.unsubscribe",
   "context.send_message",
+  "context.queue_add", "context.queue_remove", "context.queue_send", "browser.approval_decision",
   "artifact.begin",
   "artifact.chunk",
   "artifact.end",
@@ -240,9 +248,11 @@ const CONTEXT_CLIENT_METHODS = new Set<NativeMethod>([
   "context.subscribe",
   "context.unsubscribe",
   "context.send_message",
+  "context.queue_add", "context.queue_remove", "context.queue_send", "browser.approval_decision",
 ]);
 
 const ACTIVATED_CLIENT_METHODS = new Set<NativeMethod>([
+  "credential.rotate", "credential.status", "credential.revoke",
   ...CONTEXT_CLIENT_METHODS,
   "artifact.begin",
   "artifact.chunk",
@@ -251,9 +261,11 @@ const ACTIVATED_CLIENT_METHODS = new Set<NativeMethod>([
 ]);
 
 const CONTEXT_NOTIFICATION_METHODS = new Set<NativeMethod>([
+  "credential.changed",
   "context.snapshot",
   "context.event",
   "context.complete",
+  "context.queue_updated",
 ]);
 
 const safeErrorDetails = (value: Record<string, unknown>): Record<string, unknown> => {
@@ -472,6 +484,27 @@ export class NativePortController {
       parseContextSendMessageResult,
       options,
     );
+  }
+
+  contextQueueAdd(input: { contextId: string; clientMessageId: string; text: string }): Promise<ContextQueueResult> {
+    return this.request("context.queue_add", buildContextQueueAddParams(input), parseContextQueueResult, {});
+  }
+
+  contextQueueItem(action: "remove" | "send", input: { contextId: string; itemId: string }): Promise<ContextQueueResult> {
+    return this.request(action === "remove" ? "context.queue_remove" : "context.queue_send", buildContextQueueItemParams(input.contextId, input.itemId), parseContextQueueResult, {});
+  }
+
+  localApproval(input: LocalApprovalInput): Promise<Record<string, unknown>> {
+    return this.request("browser.approval_decision", buildLocalApprovalParams(input), (value) => parseLocalApprovalResult(value, input), {});
+  }
+
+  credentialControl(action: CredentialAction): Promise<CredentialStatus> {
+    return this.request(`credential.${action}`, { contract_version: 1 }, (value) => parseCredentialStatus(value, action), {});
+  }
+
+  inputArtifact(binding: import("./input-artifact").InputArtifactBinding, options: NativeRequestOptions = {}): Promise<import("./input-artifact").VerifiedInputArtifact> {
+    return import("./input-artifact").then(({ inputArtifactParams, parseInputArtifact }) =>
+      this.request("artifact.input_path", inputArtifactParams(binding), (value) => parseInputArtifact(value, binding), options));
   }
 
   artifactBegin(

@@ -7,6 +7,8 @@ import type {
   ContextSubscribeInput,
   ContextSubscribeResult,
   ContextSummary,
+  ContextQueueProjection, ContextQueueResult, ContextQueueItem,
+  LocalApprovalPresentation,
 } from "../protocol/context";
 
 const MAX_LOCAL_CONTEXT_EVENTS = 512;
@@ -21,6 +23,8 @@ export interface ContextTransport {
     clientMessageId: string;
     text: string;
   }): Promise<ContextSendMessageResult>;
+  contextQueueAdd?(input: { contextId: string; clientMessageId: string; text: string }): Promise<ContextQueueResult>;
+  contextQueueItem?(action: "remove" | "send", input: { contextId: string; itemId: string }): Promise<ContextQueueResult>;
 }
 
 export interface ContextProjection {
@@ -30,6 +34,8 @@ export interface ContextProjection {
   completionStatus: ContextCompleteNotification["status"] | null;
   historyBefore: number | null;
   hasMoreHistory: boolean;
+  messageQueue?: ContextQueueItem[];
+  approvals?: LocalApprovalPresentation[];
 }
 
 export interface ContextPanelView {
@@ -80,6 +86,8 @@ export class ContextRelay {
     this.panels.set(panelId, { anchorKey, selectedContextId: null, publish });
     return this.view(panelId);
   }
+
+  currentView(panelId: string): ContextPanelView { return this.view(panelId); }
 
   async unregisterPanel(panelId: string): Promise<void> {
     await this.mutate(async () => {
@@ -220,6 +228,52 @@ export class ContextRelay {
     }
     this.enforceEventBound();
     this.publishSelected(snapshot.contextId);
+  }
+
+  async queueAdd(panelId: string, input: { contextId: string; clientMessageId: string; text: string }): Promise<ContextQueueResult> {
+    return await this.mutate(async () => {
+      const connectionKey = this.requireSelected(panelId, input.contextId);
+      if (!this.transport.contextQueueAdd) throw new ContextRelayError("CONTEXT_RELAY_INACTIVE");
+      const result = await this.transport.contextQueueAdd(input);
+      if (connectionKey !== this.requireSelected(panelId, input.contextId) || result.contextId !== input.contextId) throw new ContextRelayError("CONTEXT_RELAY_INACTIVE");
+      this.acceptQueue(result);
+      return result;
+    });
+  }
+
+  async queueItem(panelId: string, action: "remove" | "send", input: { contextId: string; itemId: string }): Promise<ContextQueueResult> {
+    return await this.mutate(async () => {
+      const connectionKey = this.requireSelected(panelId, input.contextId);
+      if (!this.transport.contextQueueItem) throw new ContextRelayError("CONTEXT_RELAY_INACTIVE");
+      const result = await this.transport.contextQueueItem(action, input);
+      if (connectionKey !== this.requireSelected(panelId, input.contextId) || result.contextId !== input.contextId || result.itemId !== input.itemId) throw new ContextRelayError("CONTEXT_RELAY_INACTIVE");
+      this.acceptQueue(result);
+      return result;
+    });
+  }
+
+  requireSelected(panelId: string, contextId: string): string {
+    const connectionKey = this.requireActive();
+    const panel = this.requirePanel(panelId);
+    if (panel.selectedContextId !== contextId || !this.advertised.has(contextId) || (this.referenceCounts.get(contextId) ?? 0) < 1) throw new ContextRelayError("CONTEXT_NOT_ADVERTISED");
+    return connectionKey;
+  }
+
+  acceptQueue(queue: ContextQueueProjection): void {
+    if (!this.accepts(queue.contextId)) return;
+    this.projection(queue.contextId).messageQueue = queue.messageQueue.map((item) => ({ ...item }));
+    this.publishSelected(queue.contextId);
+  }
+
+  replaceApprovals(approvals: readonly LocalApprovalPresentation[]): void {
+    for (const projection of this.projections.values()) projection.approvals = [];
+    for (const approval of approvals.slice(0, 128)) {
+      if (!this.accepts(approval.contextId)) continue;
+      const projection = this.projection(approval.contextId);
+      if ((projection.approvals?.length ?? 0) >= 32) continue;
+      (projection.approvals ??= []).push({ ...approval, options: [...approval.options] });
+    }
+    for (const panelId of this.panels.keys()) this.publish(panelId);
   }
 
   acceptEvent(event: ContextEventNotification): void {
@@ -397,5 +451,7 @@ function cloneProjection(projection: StoredProjection): ContextProjection {
     completionStatus: projection.completionStatus,
     historyBefore: projection.historyBefore,
     hasMoreHistory: projection.hasMoreHistory,
+    messageQueue: projection.messageQueue?.map((item) => ({ ...item })),
+    approvals: projection.approvals?.map((item) => ({ ...item, options: [...item.options] })),
   };
 }

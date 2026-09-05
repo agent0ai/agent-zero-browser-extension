@@ -1,4 +1,5 @@
 import { BUILD_CHANNEL, DEVELOPMENT_CHANNEL, DEVELOPMENT_TRUST_CONTRACT } from "../build-channel";
+import { parseCredentialStatus } from "./credentials";
 import {
   parseDevelopmentAdmission, exactCapabilities, LIMITED_BROWSER_ACTIONS, LIMITED_BROWSER_FEATURES,
   type DevelopmentAdmission,
@@ -14,6 +15,7 @@ import {
 } from "./rpc";
 import {
   parseContextCompleteNotification,
+  parseContextQueueProjection,
   parseContextEventNotification,
   parseContextSnapshotNotification,
 } from "./context";
@@ -43,6 +45,7 @@ export const PROVEN_BROWSER_ACTIONS = [
   "hover",
   "click",
   "type",
+  "upload_file",
   "status",
   "ensure",
 ] as const;
@@ -1241,6 +1244,8 @@ export const parseInboundParams = (method: string, params: Record<string, unknow
   if (method === "context.snapshot") return { ...parseContextSnapshotNotification(params) };
   if (method === "context.event") return { ...parseContextEventNotification(params) };
   if (method === "context.complete") return { ...parseContextCompleteNotification(params) };
+  if (method === "context.queue_updated") return { ...parseContextQueueProjection(params) };
+  if (method === "credential.changed") return { ...parseCredentialStatus(params, "revoke") };
   return params;
 };
 

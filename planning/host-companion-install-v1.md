@@ -53,8 +53,9 @@ The terms MUST, MUST NOT, SHOULD, SHOULD NOT, and MAY are normative.
    Snap/Flatpak browser packages are unsupported unless a tested host-integration
    mechanism is added.
 7. Release assets are immutable and content-addressed. Every artifact is covered
-   by a signed release catalog, SHA-256 digest, GitHub build-provenance
-   attestation, and platform signature where available.
+   by a signed release catalog, SHA-256 digest, verifiable build provenance
+   (approved local signed provenance or GitHub attestation), and platform
+   signature where available.
 8. The native host does not self-update. `a0 browser-extension update` and the
    downloaded interactive installer are its explicit update paths. A native
    session may report availability but never downloads or executes release
@@ -255,6 +256,10 @@ The logical layout is:
 
 ```text
 releases/<companion-version>/<platform-arch>/a0-browser-bridge[.exe]
+releases/<companion-version>/<platform-arch>/release-catalog.json
+releases/<companion-version>/<platform-arch>/release-catalog.sig
+releases/<companion-version>/<platform-arch>/build-provenance.json
+releases/<companion-version>/<platform-arch>/build-provenance.sig
 manifests/<browser>/io.agentzero.browser_bridge.json
 install-state.json
 transactions/<transaction-id>.json
@@ -463,6 +468,27 @@ installer metadata, and the interactive installer. Catalog key rotation requires
 a preceding release that trusts both old and new key IDs; a key delivered only
 inside the catalog cannot authorize itself.
 
+Native trust must not contain its own final executable hash or the hash of a
+catalog containing that executable's archive: either introduces a cryptographic
+self-reference and cannot be produced by an ordinary release build. Compile
+publisher/builder public roots, exact platform identities, security floors and
+immutable version-specific catalog/provenance URLs before building. Build and
+platform-sign the executable, form its archive, sign the catalog, then sign the
+detached local derivation statement binding catalog, archive and executable
+digests/size. A separately distributed CLI/bootstrap can additionally pin the
+final companion/catalog hashes because it is not the artifact being pinned.
+No unsigned latest URL, runtime key injection or self-reported digest is allowed.
+
+Install retains the exact verified catalog/signature and signed local derivation
+statement/signature in the private immutable release directory, publishing all
+four sidecars with the executable before manifest activation. Read-only native
+status independently verifies both signatures against compiled roots, the
+release/floor/target/origins, the catalog payload archive binding, and the actual
+retained executable digest/size against the signed derivation statement. Missing,
+changed or unsigned evidence fails closed; install-state hashes are consistency
+checks, never release authority. This is an implementation correction to avoid
+self-pinning, not a relaxation of signature, provenance or platform requirements.
+
 Install clients verify, in order:
 
 1. supported catalog schema/channel and pinned signing key;
@@ -483,17 +509,67 @@ manifests unchanged.
 - Linux payloads are covered by the signed catalog and digest. The bootstrap
   displays/verifies the catalog key fingerprint and aborts if verification tools
   are unavailable; it never silently falls back to an unchecked binary.
-- Every payload, delivery wrapper, catalog, SBOM, and checksums file receives a
-  GitHub artifact-provenance attestation tied to the release workflow and commit.
+- Every payload, delivery wrapper, catalog, SBOM, and checksums file receives
+  verifiable build provenance tied to approved source and builder identity.
+  GitHub artifact attestation is supported but is not a required build service;
+  the approved local signed release path below is an independent alternative.
 - The release includes SPDX or CycloneDX SBOM, dependency license notices, source
   commit, Rust toolchain, and reproducibility metadata.
 
-GitHub attestation is additive provenance, not the only install trust anchor.
+GitHub attestation is optional additive provenance, not the only install trust anchor.
 Platform signatures and the pinned catalog remain mandatory because ordinary
 users may not have GitHub CLI available.
 
 Release jobs upload assets only after tests and signatures pass, then make the
 release immutable. Tags and published assets are never replaced in place.
+
+#### 9.3.1 Local signed provenance (2026-09-05 clarification)
+
+GitHub Actions availability and OAuth workflow-upload permission are not release
+prerequisites. A local builder may produce the same immutable artifacts, but an
+unsigned build log, source fingerprint, checksum list or local wheel is not
+production provenance. The companion-payload statement is bounded ASCII/JCS JSON
+with a detached 64-byte Ed25519 signature and exactly these fields:
+
+`contract: a0.browser-bridge.local-build-provenance.v1`, `schema_version: 1`,
+`release`, `platform`, `artifact_arch`, `catalog_key_id`, `catalog_sha256`,
+`archive_sha256`, `executable_sha256`, `executable_size`,
+`source_repository`, `source_commit`, `source_tree_sha256`, `rust_toolchain`,
+`recipe_sha256`, `builder_id`, and `signing_key_id`.
+
+The detached signer is an independently provisioned compiled builder root with
+an exact approved builder ID, source repository, recipe digest and toolchain.
+Catalog roots do not automatically authorize builders, and statements cannot
+introduce keys. Match every catalog/archive/executable digest and target to the
+retained candidate; source-tree hashing records dirty local inputs rather than
+mislabeling them a clean commit. Other release artifacts require corresponding
+signed subject bindings in the release provenance set. This clarification
+does not remove catalog signatures, platform signing/notarization, secure
+floors, complete artifact coverage, or immutable publication requirements.
+
+#### 9.3.2 Darwin staged-path verification exception
+
+Apple's public `SecStaticCodeCreateWithPath[AndAttributes]` and `execve` APIs
+are path-based; macOS has no public `fexecve`, and its `/dev/fd` devices are
+not Linux procfs executable links. For this platform only, verification and
+bounded metadata/self-test execution may use the one generated private staging
+pathname while retaining the original read-only executable descriptor. Hold an
+exclusive create-only verification lease, validate the current-user private
+parent chain and no symlinks/hardlinks, and recheck inode, mode, byte size and
+SHA-256 immediately before and after every system-tool or executable invocation.
+Use fixed argument arrays, cleared credential/proxy/loader environment, bounded
+output and deadlines, and no alternate pathname fallback. The stable install
+transaction acquires its separate installation lock only after all candidate
+gates pass; staging verification never creates or modifies installed state.
+
+Require the compiled Developer ID Application team/identifier, all-architecture
+signature validation, hardened runtime and secure timestamp on both slices,
+and a positive notarized Developer ID assessment. Parse the bounded
+`__TEXT,__a0_release` metadata section from both Intel/Apple Silicon Mach-O
+slices before comparing executable metadata and running the network-free
+self-test. Catalog and local-provenance verification remain mandatory.
+This is a per-user host trust boundary, not containment of an actively
+compromised process already running as that same OS user.
 
 ### 9.4 Artifact set
 
@@ -598,7 +674,7 @@ Command responsibilities:
 |---|---|
 | `install` | Resolve the latest compatible signed catalog, install/verify selected browsers, offer/open store pages, then offer pairing when authenticated. |
 | `status` | Read-only local layered diagnostics; with an authenticated host, add server bridge/compatibility status. |
-| `pair` | Create a trust-v1 intent through the existing authenticated/CSRF session and send it to the companion only through protected stdin/local rendezvous. |
+| `pair` | Create one trust-v1 intent through the authenticated/CSRF session and hand it to Chrome Options once; a future profile-bound companion rendezvous may replace this explicit handoff. |
 | `repair` | Restore owned binary permissions/manifests/state from a verified artifact without deleting/rotating keys or revoking bridges. |
 | `update` | Stage and activate the newest compatible signed stable version explicitly. |
 | `uninstall` | Revoke when reachable, remove owned registrations/credentials/files, and report stale remote state or pending deletion. |
@@ -606,6 +682,25 @@ Command responsibilities:
 If `install` cannot authenticate to the chosen Agent Zero instance, local install
 still succeeds and prints/opens the WebUI or extension pairing path. It never
 asks for an Agent Zero password on a child-process command line.
+
+The current CLI bootstrap selects the newest compatible release from its
+independently packaged immutable archive/executable pins, never an unsigned
+latest response. It downloads with bounded TLS and no redirects or ambient
+proxy, checks the archive and final executable, retains private staging through
+native invocation and delegates all installation mutations to that executable.
+Missing approved pins fail before network access; local development is separate.
+
+CLI pairing deliberately preserves Chrome profile/install authority: on explicit
+human `pair` in a terminal, obtain one five-minute trust-v1 intent and display its
+code once with the exact approved extension Options address and Agent Zero base
+URL. The user pastes it into Options; the extension-owned native session performs
+the exchange and remembers pairing. This narrowly permitted interactive secret
+reveal is not generic diagnostic output. Never put codes in files, URLs, child
+arguments/environment, JSON or redirected output. JSON/non-terminal pairing
+creates no intent and returns action-required with the WebUI/terminal route.
+Do not retry an ambiguous creation POST, auto-create codes during install, or
+report paired before Chrome confirms. A native CLI without a profile-bound
+rendezvous must not impersonate the extension by inventing install identity.
 
 `--json` emits one schema-versioned result object to stdout and human progress to
 stderr. It never emits secrets, pairing codes, cookies, raw manifest bodies, or
@@ -874,8 +969,9 @@ The install contract is not complete until automated tests prove:
     form, script, and artifact data is absent.
 24. No install path touches browser history/cookies/preferences, Docker host
     mounts, Agent Zero `usr/` state, or an unmanaged policy store.
-25. Release workflow emits signed artifacts, immutable release, checksums, SBOM,
-    notices, and verifiable GitHub provenance for the exact published bytes.
+25. Release tooling emits signed artifacts, immutable release, checksums, SBOM,
+    notices, and verifiable approved local or GitHub provenance for the exact
+    published bytes; GitHub Actions itself is not a required execution service.
 26. The old Agent Zero Docker browser and existing A0 CLI CDP/Playwright browser
     paths remain functional when the companion is absent, broken, or unpaired.
 

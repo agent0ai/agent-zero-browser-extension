@@ -48,10 +48,12 @@ const REQUIRED_RUNTIME_PERMISSIONS: chrome.runtime.ManifestPermissions[] = [
   "contextMenus",
 ];
 const REQUIRED_OPERATIONAL_INBOUND_METHODS = [
+  "credential.changed",
   "bridge.ping",
   "context.snapshot",
   "context.event",
   "context.complete",
+  "context.queue_updated",
   "browser.perform",
   "browser.cancel",
   "browser.finalize_turn",
@@ -64,10 +66,12 @@ const REQUIRED_OPERATIONAL_INBOUND_METHODS = [
   "artifact.abort",
 ] as const;
 const IMPLEMENTED_OPERATIONAL_INBOUND_METHODS = new Set([
+  "credential.changed",
   "bridge.ping",
   "context.snapshot",
   "context.event",
   "context.complete",
+  "context.queue_updated",
   "browser.perform",
   "browser.cancel",
   "browser.finalize_turn",
@@ -85,6 +89,7 @@ const criticalEventRelay = new CriticalEventRelay(runtimeStore, {
 const browserRuntime = new BrowserRuntime(runtimeStore, async (lease) => {
   await contentHost.release(lease, "finalize");
 }, contentHost, criticalEventRelay, debuggerHost, {
+  inputArtifact: async (binding, options) => await nativePort.inputArtifact(binding, options),
   artifactBegin: async (binding, metadata, options) => await nativePort.artifactBegin(binding, metadata, options),
   artifactChunk: async (binding, chunkIndex, data, options) =>
     await nativePort.artifactChunk(binding, chunkIndex, data, options),
@@ -138,6 +143,7 @@ function broadcastPanelState(): void {
   let state: Record<string, unknown>;
   try {
     state = safePanelState();
+    refreshApprovalProjection();
   } catch {
     return;
   }
@@ -319,6 +325,12 @@ const handleNativeRequest: NativeRequestHandler = async (method, params) => {
     case "context.complete":
       contextRelay.acceptComplete(params as unknown as ContextCompleteNotification);
       return { accepted: true };
+    case "context.queue_updated":
+      contextRelay.acceptQueue(params as unknown as import("../protocol/context").ContextQueueProjection);
+      return { accepted: true };
+    case "credential.changed":
+      nativePort.disconnect("credential_revoked");
+      return { accepted: true };
     case "browser.reconcile":
       return await reconcile(params);
     case "browser.ack_events":
@@ -386,6 +398,27 @@ const nativePort = new NativePortController(
 
 const contextRelay = new ContextRelay(nativePort);
 
+function refreshApprovalProjection(): void {
+  const snapshot = runtimeStore.snapshot;
+  if (!browserRuntimeReady() || nativePort.state.activationReady !== true) {
+    contextRelay.replaceApprovals([]);
+    return;
+  }
+  contextRelay.replaceApprovals(snapshot.session.pendingChallenges
+    .filter((challenge) => challenge.loadGenerationId === snapshot.lifecycle.loadGenerationId && challenge.expiresAtMs > Date.now())
+    .map((challenge) => {
+      const action = "actionClass" in challenge;
+      return {
+        contextId: challenge.contextId, challengeId: challenge.challengeId,
+        kind: action ? "action" as const : "site" as const,
+        origin: action ? challenge.sourceOrigin : challenge.destinationOrigin,
+        summary: action ? "Allow this browser action once?" : "Allow Agent Zero to work on this site?",
+        expiresAtMs: challenge.expiresAtMs,
+        options: action ? ["decline" as const, "approve_once" as const] : ["deny" as const, "allow_once" as const, "allow_turn" as const],
+      };
+    }));
+}
+
 function browserRuntimeReady(): boolean {
   const snapshot = runtimeStore.snapshot;
   const stored = snapshot.session.connection;
@@ -441,13 +474,27 @@ const routeUiRequest = createUiRouter({
     nativePort.disconnect("pairing_disconnected");
     return safePanelState();
   },
+  credentialControl: async (action) => {
+    requireContextUiReady();
+    let result;
+    try { result = await nativePort.credentialControl(action); }
+    catch (error) {
+      if (action === "status" && error instanceof NativeRequestError && error.a0Code === "NO_PENDING_KEY_UPDATE") return { status: "no_pending" };
+      throw error;
+    }
+    if (result.status === "pending" && action === "rotate") nativePort.disconnect("credential_rotation_pending");
+    if (result.status === "revoked") nativePort.disconnect("credential_revoked");
+    return result;
+  },
   contextList: async (panelId) => {
     requireContextUiReady();
     return await contextRelay.list(panelId);
   },
   contextSubscribe: async (panelId, input) => {
     requireContextUiReady();
-    return await contextRelay.subscribe(panelId, input);
+    await contextRelay.subscribe(panelId, input);
+    refreshApprovalProjection();
+    return contextRelay.currentView(panelId);
   },
   contextUnsubscribe: async (panelId, contextId) => {
     requireContextUiReady();
@@ -456,6 +503,27 @@ const routeUiRequest = createUiRouter({
   contextSendMessage: async (panelId, input) => {
     requireContextUiReady();
     return await contextRelay.sendMessage(panelId, input);
+  },
+  contextQueueAdd: async (panelId, input) => {
+    requireContextUiReady();
+    return await contextRelay.queueAdd(panelId, input);
+  },
+  contextQueueItem: async (panelId, action, input) => {
+    requireContextUiReady();
+    return await contextRelay.queueItem(panelId, action, input);
+  },
+  localApproval: async (panelId, contextId, input) => {
+    requireContextUiReady();
+    const connection = contextRelay.requireSelected(panelId, contextId);
+    const snapshot = runtimeStore.snapshot;
+    const pending = snapshot.session.pendingChallenges.find((challenge) => challenge.challengeId === input.challengeId);
+    if (!pending || pending.contextId !== contextId || pending.loadGenerationId !== snapshot.lifecycle.loadGenerationId
+      || Date.now() >= pending.expiresAtMs || ("actionClass" in pending ? "action" : "site") !== input.kind) {
+      throw new NativeRequestError("This approval is no longer available for the selected chat.", "APPROVAL_DENIED");
+    }
+    const result = await nativePort.localApproval(input);
+    if (connection !== contextRelay.requireSelected(panelId, contextId)) throw new ContextRelayError("CONTEXT_RELAY_INACTIVE");
+    return result;
   },
 });
 

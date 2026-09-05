@@ -325,6 +325,40 @@ describe("ContentRuntime", () => {
     )).resolves.toMatchObject({ ok: false, error: { code: "TARGET_UNSUPPORTED" } });
   });
 
+  it("allows only a visible empty single-file target and invalidates changed upload semantics", async () => {
+    let ownerDocument: Document;
+    const element = { isConnected: true, tagName: "INPUT", type: "file", multiple: false, disabled: false, hidden: false,
+      files: { length: 0 }, accept: "text/plain", form: null, textContent: "",
+      getAttribute: (name: string) => name === "type" ? "file" : name === "aria-label" ? "Attachment" : null,
+      hasAttribute: () => false, closest: () => null,
+      getBoundingClientRect: () => ({ left: 20, right: 120, top: 40, bottom: 80, width: 100, height: 40 }),
+      get ownerDocument() { return ownerDocument; },
+    } as unknown as HTMLInputElement;
+    ownerDocument = { elementFromPoint: () => element, defaultView: { getComputedStyle: () => ({
+      display: "block", visibility: "visible", contentVisibility: "visible", pointerEvents: "auto", opacity: "1",
+    }) } } as unknown as Document;
+    const cursor = new CursorController(() => ({ setPosition: vi.fn(), setState: vi.fn(), remove: vi.fn() }),
+      { now: () => 0, requestFrame: () => 1, cancelFrame: () => undefined },
+      { viewport: () => ({ width: 800, height: 600 }), reducedMotion: () => true });
+    const runtime = new ContentRuntime({ extensionId, extensionOrigin, ownerDocument, cursor, now: () => 1_000,
+      viewport: () => ({ width: 800, height: 600 }) });
+    await runtime.handle(bindEnvelope(), sender);
+    const ref = runtime.registerElement(element);
+    const prepared = await runtime.handle(commandEnvelope({ name: "target.prepare_upload", element_ref: ref }), sender);
+    expect(prepared).toMatchObject({ ok: true, result: { state: "click_ready", action_class: "external_side_effect" } });
+    if (!prepared.ok || prepared.kind !== "content.response" || prepared.result?.state !== "click_ready") throw new Error("missing upload target");
+    element.accept = "image/png";
+    expect(await runtime.handle(commandEnvelope({ name: "target.revalidate_upload", element_ref: ref,
+      target_fingerprint: prepared.result.target_fingerprint }, { command_id: "upload-changed" }), sender)).toMatchObject({
+      ok: false, error: { code: "TARGET_CHANGED" },
+    });
+    element.multiple = true;
+    expect(await runtime.handle(commandEnvelope({ name: "target.prepare_upload", element_ref: ref }, { command_id: "upload-multiple" }), sender)).toMatchObject({ ok: false, error: { code: "TARGET_UNSUPPORTED" } });
+    element.multiple = false;
+    Object.defineProperty(element, "files", { value: { length: 1 } });
+    expect(await runtime.handle(commandEnvelope({ name: "target.prepare_upload", element_ref: ref }, { command_id: "upload-existing" }), sender)).toMatchObject({ ok: false, error: { code: "TARGET_UNSUPPORTED" } });
+  });
+
   it("prepares, focus-confirms, and digest-verifies only an exact empty semantic type target", async () => {
     let ownerDocument: Document;
     const element = {

@@ -133,6 +133,8 @@ product-reference material is not included and is not repository instruction.
   action primary; pairing is saved per Chrome profile, while chat selection
   and site approvals remain separate. Installation and diagnostics belong in
   disclosures, and presentation changes never alter worker authority.
+  Packaged host installation is the first setup instruction; source-build CLI
+  commands belong in a secondary disclosure, not the primary onboarding path.
 
 - Local development is selected only by `vite build --mode local-development`
   (`npm run build:development`). It uses `dist-development`, the pinned public
@@ -184,10 +186,52 @@ product-reference material is not included and is not repository instruction.
 - A live context item's stable sequence may be delivered repeatedly while text
   streams. Upsert that item and advance only from the separate `last_sequence`
   source cursor; paged history must not overwrite a newer live projection.
+- Queue UI commands are explicit current-selected-panel requests through the
+  existing admitted production connection. Only bounded owned queue previews
+  enter memory-only projections; never send host attachment paths or synthesize
+  chat-log cursors. Local approval commands require `confirmed: true`, the
+  current selected context and a matching still-live worker-owned challenge.
+  Native and Core independently correlate that challenge before returning an
+  accepted control receipt; no local UI input is a grant. These methods remain
+  unavailable in limited development and cannot establish activation readiness.
 
 ## Validation
 
+Connection security controls stay under Options advanced settings and require
+an admitted production connection and explicit user initiation. Chrome sends
+only a fixed action/version; the native OS credential store owns all private
+keys and rotation IDs. A pending rotation reconnects through a fresh native
+hello, never promotes authority on the old port. Revoke needs a separate
+confirmation and a definitive Core receipt; unknown outcomes preserve keys.
+`credential-control-v1.json` is the shared strict wire fixture. These controls
+are unavailable in limited development and never imply release readiness.
+
+`scripts/build-local-delivery.mjs` is the CI-independent, host-local source
+packager. It requires explicit connector/output paths, never overwrites an
+existing output, uses locked offline Cargo dependencies, fingerprints exact
+inputs before/after building, and excludes user state and credentials. Its
+installer preserves pairing by choosing update for an installed companion and
+fresh install only for native status exit 3. A local checksum is not release
+trust; this package may not enable production or widen development admission.
+
+`scripts/export-source-handoff.mjs` exports the isolated Core/CLI task scopes
+as exact-base binary Git patches and hashed new files without commits, index
+changes or publication. It excludes ignored state, hidden files and symlinks,
+requires a fresh output directory, and never applies patches automatically.
+
 Run from this directory:
+
+The upload lane accepts only a Core-registered bounded artifact descriptor and
+an opaque semantic ref. All file selections require an exact one-use
+external-side-effect approval because a page may upload on file selection.
+Never accept model paths or caller coordinates. Native artifact.input_path is
+an operation-only, production-only private handoff: keep its path in the
+input-artifact WeakMap, consume it once solely through the owned debugger's
+DOM.setFileInputFiles, and never project it to storage, results or UI. Verify
+the native path as an absolute Unix path or ordinary local Windows drive path;
+reject traversal, Windows network/device namespaces and alternate streams. Verify
+the visible empty single-file target before and after approval, descriptor,
+document/lease ownership, current route and grant expiry before the effect.
 
 ```sh
 npm test

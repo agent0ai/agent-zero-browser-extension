@@ -126,6 +126,15 @@ status is provided in the side panel.
 
 ## Unreleased changes
 
+- The production candidate now includes text-chat queue controls, exact local
+  approval decisions, saved-key rotation/revocation and verified current-chat
+  file upload. File selection always requires one-use sharing approval; a page
+  may upload immediately after selection. Native temporary paths never enter
+  UI, storage or results. These features remain unavailable in the separately
+  limited development channel and are not claims of live production acceptance.
+- CI-independent source packaging and local signed provenance replace any
+  dependency on GitHub Actions. Checksums alone do not supply platform signing
+  or Chrome Web Store approval.
 - 2026-09-05: Options and side panel now follow Agent Zero's neutral-dark Rubik
   UI, compact blue controls, connection status rows and saved-pairing guidance.
   Installation and diagnostics use disclosures. Store screenshots must be

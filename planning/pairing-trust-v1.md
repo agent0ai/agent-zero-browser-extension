@@ -279,10 +279,16 @@ key, credential store, or Chrome profile.
    manifests for the selected Chromium family.
 2. The CLI uses its existing authenticated Agent Zero session and CSRF flow to
    create the same pairing intent.
-3. It passes the short-lived bundle to the companion through protected stdin or
-   a user-only local control channel, never command-line arguments, environment,
-   shell history, or JSONL status output.
-4. The companion performs the same exchange and persists the same key type.
+3. The current explicit human terminal command displays the five-minute code
+   once with instructions to paste it into the approved Chrome Options page.
+   Chrome owns the profile/install identity and passes it to its native session.
+   A future profile-bound protected local rendezvous may automate this handoff;
+   the CLI must not invent extension installation identity. JSON or redirected
+   output creates no intent and reveals no code. Codes never enter arguments,
+   environment, files, URLs, generic logs or JSONL status output.
+4. The extension-owned companion performs the same exchange and persists the
+   same key type. The CLI reports action-required until that browser step is
+   completed, not a successful pairing based only on intent creation.
 5. The CLI may exit. The companion/native-host lifecycle owns future sessions.
 
 CLI and WebUI pairing therefore differ only in orchestration, not credential,

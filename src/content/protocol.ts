@@ -24,6 +24,8 @@ export type ContentCommand =
   | { name: "page.scroll_to_ref"; element_ref: string; show_cursor?: boolean }
   | { name: "target.prepare_hover"; element_ref: string }
   | { name: "target.prepare_click"; element_ref: string }
+  | { name: "target.prepare_upload"; element_ref: string }
+  | { name: "target.revalidate_upload"; element_ref: string; target_fingerprint: string }
   | { name: "target.revalidate_click"; element_ref: string; target_fingerprint: string }
   | { name: "target.prepare_type"; element_ref: string; has_line_feed: boolean }
   | { name: "target.revalidate_type"; element_ref: string; target_fingerprint: string; has_line_feed: boolean }
@@ -212,8 +214,10 @@ const isContentCommand = (value: unknown): value is ContentCommand => {
     case "target.prepare_hover":
       return hasExactKeys(value, ["name", "element_ref"]) && isIdentifier(value.element_ref);
     case "target.prepare_click":
+    case "target.prepare_upload":
       return hasExactKeys(value, ["name", "element_ref"]) && isIdentifier(value.element_ref);
     case "target.revalidate_click":
+    case "target.revalidate_upload":
       return (
         hasExactKeys(value, ["name", "element_ref", "target_fingerprint"])
         && isIdentifier(value.element_ref)

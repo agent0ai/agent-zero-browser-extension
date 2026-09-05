@@ -10,11 +10,20 @@ export const NATIVE_METHODS = [
   "pairing.status",
   "pairing.exchange",
   "pairing.disconnect",
+  "credential.rotate",
+  "credential.status",
+  "credential.revoke",
+  "credential.changed",
   "agent.status",
   "context.list",
   "context.subscribe",
   "context.unsubscribe",
   "context.send_message",
+  "context.queue_add",
+  "context.queue_remove",
+  "context.queue_send",
+  "context.queue_updated",
+  "browser.approval_decision",
   "context.snapshot",
   "context.event",
   "context.complete",
@@ -29,6 +38,7 @@ export const NATIVE_METHODS = [
   "artifact.chunk",
   "artifact.end",
   "artifact.abort",
+  "artifact.input_path",
 ] as const;
 
 export type NativeMethod = (typeof NATIVE_METHODS)[number];

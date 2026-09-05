@@ -16,9 +16,9 @@ normative semantics were not intentionally changed.
 
 | Snapshot | Source SHA-256 |
 |---|---|
-| `protocol-v1.md` | `4c2fe1a7240ca05edfb3de0e31154560ad28e7551a09062c0aec2cf3133ae6c4` |
-| `pairing-trust-v1.md` | `96c2d8485cc88bee0afaa01320c2aec6956a35adc9f33fee8f40f52e89c81df7` |
-| `host-companion-install-v1.md` | `18cadae8e4b9e48ba7e74a19769bf7a57f73be0660f67793be061d2943cf0e06` |
+| `protocol-v1.md` | `2f298499af29af7c2b68c229a56f7af1d74cf9c96fc1c2b64d788effe527736b` |
+| `pairing-trust-v1.md` | `e596f0b1e88c4db430005fc69db4f659d4c493bf0ef4304219b57ba4b65da633` |
+| `host-companion-install-v1.md` | `418de73cd7731e5a14438de475953144545b508dc6d66ccb150638c66c6bbefe` |
 | `core-adapter-v1.md` | `bfb5d976cbec63e2168f505f7c9f39ba3138b898504edbaca99cb27c8275c4e7` |
 | `mv3-runtime-v1.md` | `109ef747d23b468195a6374c542c9a3e9016fa47fe1f1e91d7c0599a959d9314` |
 | `visible-ux-v1.md` | `267b86d60335ed1add8cd4692606803b54a764d1475e8136d879ef1a7747d70d` |
@@ -32,6 +32,27 @@ normative semantics were not intentionally changed.
 
 Compatibility is negotiated at runtime. Do not infer compatibility from a
 repository name, matching version string, local build, or these documents.
+The host-install snapshot includes the 2026-09-05 local-delivery clarification:
+approved detached local-build provenance can replace GitHub Actions attestation,
+and Darwin uses a tightly bound private staging-path verification exception
+because its public signature/exec APIs do not accept executable descriptors.
+This changes release tooling policy, not runtime wire authority; mandatory
+catalog/platform/notarization gates and production roots remain intact.
+The same correction removes impossible native executable/catalog self-pins:
+native trust pins signer roots and immutable version URLs, while installed
+status authenticates retained signed catalog and derivation sidecars. A
+separately distributed CLI can still pin the final companion/catalog bytes.
+The CLI-first pairing clarification preserves Chrome profile authority: the
+explicit human terminal command creates one authenticated five-minute intent
+and shows its code for Options once. JSON/redirected output creates no secret;
+there is no unsupported native CLI impersonation or invented install identity.
+The protocol snapshot includes the additive production-only queue and explicit
+local-approval methods implemented across Core, native and worker codecs on
+2026-09-05. Their shared fixture is `context-queue-approval-v1.json`, SHA-256
+`fb9c3b3e28f2d8e5be457dc0fe68d6d60ed99025acd23196e0a4b354178e178f`.
+The additive native-owned credential rotation/status/self-revoke shape is
+frozen by `credential-control-v1.json`, SHA-256
+`743e1676ca9c6cc0a4b9c36da7b80eaf72501b6f8a5e5a0977f5dd5f9dc1b676`.
 Production activation additionally requires independently verified release,
 identity, pairing, selection, lifecycle, and attestation evidence. No compatible
 Core or native-companion release SHA is asserted here because the source

@@ -5,6 +5,8 @@ import {
   buildContextUnsubscribeParams,
   type ContextSendMessageResult,
   type ContextSubscribeInput,
+  buildContextQueueAddParams, buildContextQueueItemParams, buildLocalApprovalParams,
+  type ContextQueueResult, type LocalApprovalInput,
 } from "../protocol/context";
 import type { ContextPanelView } from "./context-relay";
 
@@ -22,6 +24,7 @@ export interface UiRouterDependencies {
   reconnectDevelopmentBrowser?: () => Promise<Record<string, unknown>>;
   pair: (submission: PairingSubmission) => Promise<Record<string, unknown>>;
   disconnect: () => Promise<Record<string, unknown>>;
+  credentialControl?: (action: "rotate" | "status" | "revoke") => Promise<Record<string, unknown>>;
   contextList: (panelId: string) => Promise<ContextPanelView>;
   contextSubscribe: (panelId: string, input: ContextSubscribeInput) => Promise<ContextPanelView>;
   contextUnsubscribe: (panelId: string, contextId: string) => Promise<ContextPanelView>;
@@ -29,6 +32,9 @@ export interface UiRouterDependencies {
     panelId: string,
     input: { contextId: string; clientMessageId: string; text: string },
   ) => Promise<ContextSendMessageResult>;
+  contextQueueAdd?: (panelId: string, input: { contextId: string; clientMessageId: string; text: string }) => Promise<ContextQueueResult>;
+  contextQueueItem?: (panelId: string, action: "remove" | "send", input: { contextId: string; itemId: string }) => Promise<ContextQueueResult>;
+  localApproval?: (panelId: string, contextId: string, input: LocalApprovalInput) => Promise<Record<string, unknown>>;
 }
 
 export interface UiRouteContext {
@@ -61,6 +67,10 @@ export function createUiRouter(dependencies: UiRouterDependencies) {
       case "refresh":
         if (!hasExactKeys(message, ["type"])) throw new UiRequestError("INVALID_UI_REQUEST");
         return { ok: true, state: await dependencies.refresh() };
+      case "credential_control": {
+        if (!hasExactKeys(message, ["type", "action", "confirmed"]) || message.confirmed !== true || !["rotate", "status", "revoke"].includes(String(message.action)) || !dependencies.credentialControl) throw new UiRequestError("INVALID_UI_REQUEST");
+        return { ok: true, result: await dependencies.credentialControl(message.action as "rotate" | "status" | "revoke") };
+      }
       case "reconnect_development_browser":
         if (!hasExactKeys(message, ["type"])) throw new UiRequestError("INVALID_UI_REQUEST");
         if (!dependencies.reconnectDevelopmentBrowser) throw new UiRequestError("UNSUPPORTED_UI_REQUEST");
@@ -159,6 +169,31 @@ export function createUiRouter(dependencies: UiRouterDependencies) {
           throw new UiRequestError("INVALID_UI_REQUEST");
         }
         return { ok: true, result: await dependencies.contextSendMessage(routeContext.panelId, input) };
+      }
+      case "context_queue_add": {
+        if (!hasExactKeys(message, ["type", "params"]) || !isRecord(message.params) || !routeContext || !dependencies.contextQueueAdd) throw new UiRequestError("INVALID_UI_REQUEST");
+        const p = message.params;
+        if (!hasExactKeys(p, ["context_id", "client_message_id", "text"]) || typeof p.context_id !== "string" || typeof p.client_message_id !== "string" || typeof p.text !== "string") throw new UiRequestError("INVALID_UI_REQUEST");
+        const input = { contextId: p.context_id, clientMessageId: p.client_message_id, text: p.text };
+        buildContextQueueAddParams(input);
+        return { ok: true, result: await dependencies.contextQueueAdd(routeContext.panelId, input) };
+      }
+      case "context_queue_remove":
+      case "context_queue_send": {
+        if (!hasExactKeys(message, ["type", "params"]) || !isRecord(message.params) || !routeContext || !dependencies.contextQueueItem) throw new UiRequestError("INVALID_UI_REQUEST");
+        const p = message.params;
+        if (!hasExactKeys(p, ["context_id", "item_id"]) || typeof p.context_id !== "string" || typeof p.item_id !== "string") throw new UiRequestError("INVALID_UI_REQUEST");
+        buildContextQueueItemParams(p.context_id, p.item_id);
+        return { ok: true, result: await dependencies.contextQueueItem(routeContext.panelId, message.type === "context_queue_send" ? "send" : "remove", { contextId: p.context_id, itemId: p.item_id }) };
+      }
+      case "browser_approval_decision": {
+        if (!hasExactKeys(message, ["type", "params", "confirmed"]) || message.confirmed !== true || !isRecord(message.params) || !routeContext || !dependencies.localApproval) throw new UiRequestError("INVALID_UI_REQUEST");
+        const p = message.params;
+        if (!hasExactKeys(p, ["context_id", "challenge_id", "kind", "decision"]) || typeof p.context_id !== "string" || typeof p.challenge_id !== "string" || typeof p.kind !== "string" || typeof p.decision !== "string") throw new UiRequestError("INVALID_UI_REQUEST");
+        const input = { challengeId: p.challenge_id, kind: p.kind, decision: p.decision } as LocalApprovalInput;
+        buildLocalApprovalParams(input);
+        buildContextUnsubscribeParams(p.context_id);
+        return { ok: true, result: await dependencies.localApproval(routeContext.panelId, p.context_id, input) };
       }
       default:
         throw new UiRequestError("UNSUPPORTED_UI_REQUEST");

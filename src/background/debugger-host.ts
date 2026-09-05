@@ -1,5 +1,6 @@
 import type { TabLease } from "./leases";
 import { NativeRequestError } from "./native-port";
+import { consumeInputArtifactPath, type VerifiedInputArtifact } from "./input-artifact";
 
 export interface DebuggerLeaseBinding {
   actionId: string;
@@ -24,6 +25,8 @@ export interface ScreenshotDebuggerHost {
   resolveBackendNodeAtPoint(binding: DebuggerLeaseBinding, point: { x: number; y: number }): Promise<number>;
   focusBackendNode(binding: DebuggerLeaseBinding, backendNodeId: number): Promise<void>;
   insertText(binding: DebuggerLeaseBinding, text: string): Promise<void>;
+  setInputFile?(binding: DebuggerLeaseBinding, backendNodeId: number, artifact: VerifiedInputArtifact,
+    assertAuthority: () => void): Promise<void>;
   detach(binding: DebuggerLeaseBinding): Promise<boolean>;
   detachLease(lease: TabLease): Promise<boolean>;
   observeDetached(source: chrome.debugger.Debuggee): DebuggerLeaseBinding | null;
@@ -228,6 +231,34 @@ export class ChromeScreenshotDebuggerHost implements ScreenshotDebuggerHost {
       );
     } catch {
       throw new NativeRequestError("Chrome did not return a certain text insertion outcome.", "OUTCOME_UNKNOWN", "unknown");
+    }
+  }
+
+  async setInputFile(binding: DebuggerLeaseBinding, backendNodeId: number, artifact: VerifiedInputArtifact,
+    assertAuthority: () => void): Promise<void> {
+    if (!sameBinding(this.attached.get(binding.providerTabId), binding)
+      || !Number.isSafeInteger(backendNodeId) || backendNodeId < 1) {
+      throw new NativeRequestError("The file input is not bound to this exact operation.", "TAB_IDENTITY_MISMATCH");
+    }
+    assertAuthority();
+    const described = await chrome.debugger.sendCommand({ tabId: binding.providerTabId }, "DOM.describeNode", { backendNodeId, depth: 0 }) as { node?: { nodeName?: string; backendNodeId?: number; attributes?: unknown } };
+    const node = described?.node;
+    if (node?.nodeName !== "INPUT" || node.backendNodeId !== backendNodeId || !Array.isArray(node.attributes)
+      || node.attributes.length > 256 || node.attributes.length % 2 !== 0 || node.attributes.some((entry) => typeof entry !== "string")) {
+      throw new NativeRequestError("The exact target is not a file input.", "DOCUMENT_MISMATCH");
+    }
+    const attributes = new Map<string, string>();
+    for (let index = 0; index < node.attributes.length; index += 2) attributes.set(node.attributes[index], node.attributes[index + 1]);
+    if (attributes.get("type")?.toLowerCase() !== "file" || attributes.has("disabled") || attributes.has("multiple") || attributes.has("webkitdirectory")) {
+      throw new NativeRequestError("Only an enabled single-file input is supported.", "INVALID_STATE");
+    }
+    assertAuthority();
+    if (!sameBinding(this.attached.get(binding.providerTabId), binding)) throw new NativeRequestError("The upload debugger lease changed.", "TAB_IDENTITY_MISMATCH");
+    const path = consumeInputArtifactPath(artifact, binding.actionId);
+    try {
+      await chrome.debugger.sendCommand({ tabId: binding.providerTabId }, "DOM.setFileInputFiles", { backendNodeId, files: [path] });
+    } catch {
+      throw new NativeRequestError("Chrome did not confirm the file input outcome.", "OUTCOME_UNKNOWN", "unknown");
     }
   }
 

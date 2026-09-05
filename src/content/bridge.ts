@@ -258,11 +258,14 @@ export class ContentRuntime {
         this.emitArrivalOnce(envelope, point);
         return commandResult(envelope, { state: "hover_ready", ...point });
       }
-      case "target.prepare_click": {
-        const first = await this.resolveClickTarget(command.element_ref);
+      case "target.prepare_click":
+      case "target.prepare_upload": {
+        const resolve = command.name === "target.prepare_upload"
+          ? (ref: string) => this.resolveUploadTarget(ref) : (ref: string) => this.resolveClickTarget(ref);
+        const first = await resolve(command.element_ref);
         if (!first.ok) return commandError(envelope, first.code, first.message);
         const point = await this.dependencies.cursor.moveTo(first.point, true);
-        const current = await this.resolveClickTarget(command.element_ref);
+        const current = await resolve(command.element_ref);
         if (
           !current.ok
           || current.element !== first.element
@@ -281,8 +284,10 @@ export class ContentRuntime {
           target_fingerprint: current.targetFingerprint,
         });
       }
-      case "target.revalidate_click": {
-        const current = await this.resolveClickTarget(command.element_ref);
+      case "target.revalidate_click":
+      case "target.revalidate_upload": {
+        const current = command.name === "target.revalidate_upload"
+          ? await this.resolveUploadTarget(command.element_ref) : await this.resolveClickTarget(command.element_ref);
         if (!current.ok) return commandError(envelope, current.code, current.message);
         if (current.targetFingerprint !== command.target_fingerprint) {
           return commandError(envelope, "TARGET_CHANGED", "The click target no longer matches its approved fingerprint.");
@@ -550,6 +555,40 @@ export class ContentRuntime {
       viewport,
     }));
     return { ok: true, element, point: target.point, actionClass, targetFingerprint };
+  }
+
+  private async resolveUploadTarget(reference: string): Promise<ClickTargetResolution> {
+    const resolved = this.references?.resolve(reference);
+    if (!resolved?.ok) return { ok: false, code: "STALE_ELEMENT_REFERENCE", message: "The file field reference is stale." };
+    const element = resolved.element as HTMLInputElement;
+    if (element.tagName.toLowerCase() !== "input" || element.type !== "file"
+      || element.multiple || element.hasAttribute("webkitdirectory") || element.hasAttribute("directory")
+      || element.disabled || element.files?.length !== 0 || element.getAttribute("aria-disabled") === "true") {
+      return { ok: false, code: "TARGET_UNSUPPORTED", message: "Choose an empty, enabled single-file field." };
+    }
+    const style = this.dependencies.ownerDocument.defaultView?.getComputedStyle(element);
+    if (element.hidden || element.getAttribute("aria-hidden") === "true" || style?.display === "none"
+      || style?.visibility === "hidden" || style?.visibility === "collapse" || style?.contentVisibility === "hidden"
+      || style?.pointerEvents === "none" || Number.parseFloat(style?.opacity ?? "1") === 0) {
+      return { ok: false, code: "TARGET_NOT_VISIBLE", message: "The file field must be visible." };
+    }
+    const rect = element.getBoundingClientRect();
+    const viewport = this.viewport();
+    const visible = visiblePointForRect(rect, viewport);
+    if (!visible.ok) return { ok: false, code: "TARGET_NOT_VISIBLE", message: "The file field has no visible point." };
+    const point = { x: Math.round(visible.point.x), y: Math.round(visible.point.y) };
+    if (point.x < Math.max(0, rect.left) || point.x >= Math.min(viewport.width, rect.right)
+      || point.y < Math.max(0, rect.top) || point.y >= Math.min(viewport.height, rect.bottom)
+      || this.dependencies.ownerDocument.elementFromPoint(point.x, point.y) !== element) {
+      return { ok: false, code: "TARGET_NOT_VISIBLE", message: "The file field is occluded." };
+    }
+    const targetFingerprint = await digest(stableJson({ action: "upload_file", action_class: "external_side_effect",
+      data_classification: "none", document_epoch: this.binding?.document_epoch, element_ref: reference,
+      geometry: { x: point.x, y: point.y, left: rect.left, top: rect.top, width: rect.width, height: rect.height },
+      accept_digest: await digest(element.accept), name_digest: await digest(semanticName(element)),
+      form_action_digest: await digest(element.form?.action || "none"),
+      form_method: element.form?.method || "none", viewport, precondition: "empty_single_file" }));
+    return { ok: true, element, point, actionClass: "external_side_effect", targetFingerprint };
   }
 
   private async resolveTypeTarget(

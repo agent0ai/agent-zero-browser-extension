@@ -132,6 +132,24 @@ export function parseContextPresentation(value: unknown): ContextPresentation {
   ) return EMPTY_CONTEXT_PRESENTATION;
   const events = value.selected.events.map((event) => parseEvent(event, summary.contextId));
   if (events.some((event) => event === null)) return EMPTY_CONTEXT_PRESENTATION;
+  const queue = value.selected.messageQueue ?? [];
+  if (!Array.isArray(queue) || queue.length > 32 || queue.some((item) => !isRecord(item) || !isIdentifier(item.id)
+    || typeof item.text !== "string" || [...item.text].length > 100 || utf8ByteLength(item.text) > 400)
+    || new Set(queue.map((item) => item.id)).size !== queue.length) return EMPTY_CONTEXT_PRESENTATION;
+  const approvals = value.selected.approvals ?? [];
+  if (!Array.isArray(approvals) || approvals.length > 32) return EMPTY_CONTEXT_PRESENTATION;
+  for (const approval of approvals) {
+    if (!isRecord(approval) || approval.contextId !== summary.contextId || !isIdentifier(approval.challengeId)
+      || !["site", "action"].includes(String(approval.kind)) || typeof approval.summary !== "string"
+      || utf8ByteLength(approval.summary) > 256 || typeof approval.origin !== "string" || approval.origin.length > 512
+      || !isCursor(approval.expiresAtMs) || !Array.isArray(approval.options)) return EMPTY_CONTEXT_PRESENTATION;
+    const options = approval.kind === "site" ? ["deny", "allow_once", "allow_turn"] : ["decline", "approve_once"];
+    if (JSON.stringify(approval.options) !== JSON.stringify(options)) return EMPTY_CONTEXT_PRESENTATION;
+    try {
+      const origin = new URL(approval.origin);
+      if (!["http:", "https:"].includes(origin.protocol) || origin.origin !== approval.origin) return EMPTY_CONTEXT_PRESENTATION;
+    } catch { return EMPTY_CONTEXT_PRESENTATION; }
+  }
   return {
     contexts: summaries,
     selectedContextId,
@@ -143,6 +161,9 @@ export function parseContextPresentation(value: unknown): ContextPresentation {
       completionStatus: value.selected.completionStatus as ContextProjection["completionStatus"],
       historyBefore: value.selected.historyBefore,
       hasMoreHistory: value.selected.hasMoreHistory,
+      messageQueue: queue.map((item) => ({ id: item.id, text: item.text })),
+      approvals: approvals.map((item) => ({ contextId: item.contextId, challengeId: item.challengeId, kind: item.kind,
+        origin: item.origin, summary: item.summary, expiresAtMs: item.expiresAtMs, options: [...item.options] })),
     },
   };
 }

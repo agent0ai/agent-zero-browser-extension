@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { BrowserRuntime, BROWSER_RUNTIME_ACTIONS, BROWSER_RUNTIME_CAPABILITIES, type ArtifactOutputTransport } from "./browser-runtime";
 import type { OutputArtifactBinding } from "../protocol/artifacts";
+import { inputArtifactParams, parseInputArtifact } from "./input-artifact";
 import { ChromeScreenshotDebuggerHost } from "./debugger-host";
 import { createGroupRegistry } from "./groups";
 import {
@@ -1366,6 +1367,57 @@ describe("leased browser runtime", () => {
       expect.objectContaining({ actionId: "action-one", kind: "click", stage: "succeeded" }),
     ]);
     expect(published).toHaveBeenCalledWith(expect.objectContaining({ eventType: "challenge.required" }));
+  });
+
+  it("shares a verified native attachment only after exact one-use site consent without exposing its private path", async () => {
+    const snapshot = await addLease(snapshotFixture(), { byte: 53, providerTabId: 53, origin: "created" });
+    const handle = Object.keys(snapshot.session.leasesByHandle)[0];
+    const store = new FakeRuntimeStore(snapshot);
+    const privatePath = "/private/a0-fixture/input";
+    const digest = `sha256:${"a".repeat(64)}`;
+    const command = vi.fn(async (_lease: TabLease, input: { command: { name: string } }) => ({ ok: true,
+      result: input.command.name === "cursor.activate" ? { state: "activated" }
+        : { state: "click_ready", x: 70, y: 60, action_class: "external_side_effect", target_fingerprint: "b".repeat(64) },
+    }));
+    debuggerSendCommand.mockImplementation(async (_source: unknown, method: string) =>
+      method === "DOM.getNodeForLocation" ? { backendNodeId: 91 }
+        : method === "DOM.describeNode" ? { node: { nodeName: "INPUT", backendNodeId: 91, attributes: ["type", "file"] } } : {});
+    const inputArtifact = vi.fn(async (binding: import("./input-artifact").InputArtifactBinding) => parseInputArtifact({
+      ...inputArtifactParams(binding), ephemeral_path: privatePath,
+      descriptor: { artifact_id: binding.artifactId, mime_type: "text/plain", byte_count: 3, sha256: digest, purpose: "upload_file" },
+    }, binding));
+    const runtime = new TestBrowserRuntime(store as unknown as RuntimeStore, async () => undefined, {
+      bind: async (lease: TabLease) => ({ ...lease, identity: { ...lease.identity, documentId: "document-upload", documentEpoch: 1 }, revision: lease.revision + 1 }),
+      command, release: async () => undefined,
+    } as unknown as import("./content-host").ContentRuntimeHost, { publishPersisted: vi.fn() }, new ChromeScreenshotDebuggerHost(), {
+      inputArtifact, artifactBegin: vi.fn(), artifactChunk: vi.fn(), artifactEnd: vi.fn(), artifactAbort: vi.fn(),
+    });
+    const params = performParams({ action: "upload_file", target: { tab_handle: handle }, args: {
+      ref: "doc:epoch:opaque", expected_action_class: "external_side_effect", artifact_id: "input-one", mime_type: "text/plain", byte_count: 3, sha256: digest,
+    }, required_capabilities: ["upload_file", "artifacts_v1", "semantic_dom_v1", "cursor_v1", "trusted_input_v1"], display: { cursor: true, foreground: false } });
+    const operation = runtime.perform(params);
+    await vi.waitFor(() => expect(store.snapshot.session.pendingChallenges).toHaveLength(1));
+    expect(inputArtifact).not.toHaveBeenCalled();
+    expect(debuggerSendCommand).not.toHaveBeenCalled();
+    const event = store.snapshot.ledger.criticalEvents.find((candidate) => candidate.eventType === "challenge.required" && candidate.data.kind === "action");
+    if (!event || event.eventType !== "challenge.required" || event.data.kind !== "action") throw new Error("missing upload challenge");
+    await runtime.resolveChallenge({ contract_version: 1, control_id: "upload-control", challenge_id: event.data.challengeId,
+      context_id: "context-one", browser_session_id: "session-one", turn_id: "turn-one", op_id: "op-one", action_id: "action-one",
+      tab_handle: handle, document_id: event.data.documentId, document_epoch: event.data.documentEpoch,
+      canonical_parameter_hash: event.data.canonicalParameterHash, target_fingerprint: event.data.targetFingerprint,
+      origin: event.data.origin, action_class: "external_side_effect", data_classification: "none", decision: "approve_once",
+      grant: { action_grant_id: "upload-grant", scope: "operation", origin: event.data.origin, action_class: "external_side_effect",
+        canonical_parameter_hash: event.data.canonicalParameterHash, target_fingerprint: event.data.targetFingerprint,
+        data_classification: "none", expires_at_ms: event.data.expiresAtMs },
+    });
+    const result = await operation;
+    expect(result.result).toMatchObject({ ref: "doc:epoch:opaque", action_class: "external_side_effect" });
+    expect(inputArtifact).toHaveBeenCalledTimes(1);
+    expect(debuggerSendCommand.mock.calls.filter((call) => call[1] === "DOM.setFileInputFiles")).toEqual([
+      [{ tabId: 53 }, "DOM.setFileInputFiles", { backendNodeId: 91, files: [privatePath] }],
+    ]);
+    expect(debuggerSendCommand.mock.calls.some((call) => call[1] === "Input.dispatchMouseEvent")).toBe(false);
+    expect(JSON.stringify({ result, state: store.snapshot })).not.toContain(privatePath);
   });
 
   it("types once only after an exact sensitive text grant without persisting or returning raw text", async () => {

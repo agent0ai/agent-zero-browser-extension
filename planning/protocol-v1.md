@@ -250,6 +250,15 @@ case-sensitive:
 - `context.subscribe`
 - `context.unsubscribe`
 - `context.send_message`
+- `context.queue_add`
+- `context.queue_remove`
+- `context.queue_send`
+- `context.queue_updated`
+- `browser.approval_decision`
+- `credential.rotate`
+- `credential.status`
+- `credential.revoke`
+- `credential.changed`
 - `context.snapshot`
 - `context.event`
 - `context.complete`
@@ -307,6 +316,44 @@ connector session:
 | `context.snapshot` notification | `connector_context_snapshot` |
 | `context.event` notification | `connector_context_event` and `connector_message_queue_updated` |
 | `context.complete` notification | `connector_context_complete` and `connector_context_error` |
+
+`credential.rotate/status/revoke` are explicit production-only native requests
+whose Chrome parameters are exactly `{contract_version:1}`. The native host
+generates and securely stages rotation ID and private key before submitting
+`connector_bridge_credential_control`. Rotate data is exactly version, action,
+rotation ID and `public_key:{algorithm:"Ed25519",encoding:"raw-base64url",value}`;
+status data is version/action/retained rotation ID; revoke data is version/action.
+Core receipts contain exactly version/action/rotation ID (null for revoke),
+key generation (1..2147483647), status pending/active/expired/revoked and expiry
+(integer for pending, null otherwise). Native never deletes the active key on
+a pending or uncertain response. A fresh candidate-signed admitted handshake
+confirms promotion; expiry is cleared only after an authoritative Core receipt.
+The durable `connector_bridge_credential_status` revoke notification maps to
+`credential.changed`, or settles that port's explicit pending revoke before
+shutdown. The shared `credential-control-v1.json` fixture freezes these shapes.
+No private seed, caller-supplied public key or key-store path crosses into Chrome.
+
+`context.list` is a bounded companion view of contexts already authorized and
+advertised by the paired Agent Zero instance. The additive production-only
+queue methods map to `connector_message_queue_add/remove/send`: add requires
+version 1, context ID, stable client message ID and text; remove/send require
+version 1, context ID and the exact returned item ID. No clear-all, host paths,
+attachments or foreign queue items are accepted. A hash-only durable journal
+prevents repeated enqueue/send effects; uncertain effects never retry. The
+`context.queue_updated` notification carries only version 1, context ID and at
+most 32 owned `message_queue` previews (ID, at most 100 characters, empty
+attachments and zero attachment count). It has no invented log cursor.
+
+`browser.approval_decision` maps to the same-named connector approval event and
+accepts only version 1, an existing challenge ID, `kind: site|action` and the
+corresponding explicit decision. Site options are deny/allow_once/allow_turn;
+action options are decline/approve_once. The trusted worker requires a matching
+current selected-chat challenge; Core independently matches the retained exact
+principal, socket and load generation. No caller receipt or grant is accepted.
+Responses preserve Core's public accepted control projection, not an assertion
+that Chrome applied the action. These additions are documented in the shared
+`context-queue-approval-v1.json` cross-language fixture and do not widen the
+separate limited-development runtime.
 
 `context.list` is a bounded companion view of contexts already authorized and
 advertised by the paired Agent Zero instance; it does not grant access to an

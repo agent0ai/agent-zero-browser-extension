@@ -13,7 +13,7 @@ import {
   runtimeStateLabel,
   type RuntimePresentation,
 } from "../lib/runtime-presentation";
-import { MAX_CONTEXT_MESSAGE_TEXT_BYTES, utf8ByteLength, type ContextEvent } from "../protocol/context";
+import { MAX_CONTEXT_MESSAGE_TEXT_BYTES, utf8ByteLength, type ContextEvent, type LocalApprovalInput, type LocalApprovalPresentation } from "../protocol/context";
 
 type PanelResponse = { ok: true; context: unknown };
 type StateResponse = { ok: true; state: unknown };
@@ -33,6 +33,7 @@ export function App() {
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [notice, setNotice] = useState("");
+  const [pendingAction, setPendingAction] = useState("");
   const portRef = useRef<chrome.runtime.Port | null>(null);
   const loadedConnectionRef = useRef("");
   const authorityRef = useRef({ epoch: 0, connectionId: "", loadGenerationId: "" });
@@ -68,6 +69,7 @@ export function App() {
         setContextBusy(false);
         setRefreshing(false);
         setSending(false);
+        setPendingAction("");
         if (!next.ready) {
           loadedConnectionRef.current = "";
           setContext(EMPTY_CONTEXT_PRESENTATION);
@@ -190,7 +192,7 @@ export function App() {
     }
   };
 
-  const send = async () => {
+  const send = async (queued = false) => {
     const port = portRef.current;
     const selected = context.selected;
     const text = draft;
@@ -199,6 +201,7 @@ export function App() {
       || !runtime.ready
       || !selected
       || sending
+      || contextBusy || Boolean(pendingAction)
       || text.trim().length === 0
       || utf8ByteLength(text) > MAX_CONTEXT_MESSAGE_TEXT_BYTES
     ) return;
@@ -208,7 +211,7 @@ export function App() {
     const clientMessageId = `client:${crypto.randomUUID()}`;
     try {
       await sendSidePanelRequest(port, {
-        type: "context_send_message",
+        type: queued ? "context_queue_add" : "context_send_message",
         params: {
           context_id: selected.summary.contextId,
           client_message_id: clientMessageId,
@@ -217,12 +220,50 @@ export function App() {
       }, 120_000);
       if (!authorityIsCurrent(fence)) return;
       setDraft((current) => current === text ? "" : current);
-      setNotice("Update sent to Agent Zero.");
+      setNotice(queued ? "Message queued. Agent Zero can pick it up after its current work." : "Update sent to Agent Zero.");
     } catch {
       if (!authorityIsCurrent(fence)) return;
       setNotice("This update was not confirmed. It was not retried automatically.");
     } finally {
       if (authorityIsCurrent(fence)) setSending(false);
+    }
+  };
+
+  const queueItem = async (action: "remove" | "send", itemId: string) => {
+    const port = portRef.current;
+    const selected = context.selected;
+    if (!port || !runtime.ready || !selected || sending || pendingAction || contextBusy) return;
+    const fence = captureAuthority(port);
+    setPendingAction(itemId);
+    setNotice("");
+    try {
+      await sendSidePanelRequest(port, { type: `context_queue_${action}`, params: { context_id: selected.summary.contextId, item_id: itemId } }, 120_000);
+      if (!authorityIsCurrent(fence)) return;
+      setNotice(action === "send" ? "Queue update confirmed. Check the conversation for the message." : "Queued message removed.");
+    } catch {
+      if (authorityIsCurrent(fence)) setNotice("The queue change was not confirmed. It was not retried automatically.");
+    } finally {
+      if (authorityIsCurrent(fence)) setPendingAction("");
+    }
+  };
+
+  const decideApproval = async (approval: LocalApprovalPresentation, decision: LocalApprovalInput["decision"]) => {
+    const port = portRef.current;
+    if (!port || !runtime.ready || !context.selected || context.selected.summary.contextId !== approval.contextId
+      || sending || pendingAction || contextBusy || Date.now() >= approval.expiresAtMs) return;
+    const fence = captureAuthority(port);
+    setPendingAction(approval.challengeId);
+    setNotice("");
+    try {
+      await sendSidePanelRequest(port, { type: "browser_approval_decision", confirmed: true, params: {
+        context_id: approval.contextId, challenge_id: approval.challengeId, kind: approval.kind, decision,
+      } }, 30_000);
+      if (!authorityIsCurrent(fence)) return;
+      setNotice("Your choice was sent to Agent Zero. The task will report the browser result.");
+    } catch {
+      if (authorityIsCurrent(fence)) setNotice("That approval was not confirmed. It may have expired; check the task before trying again.");
+    } finally {
+      if (authorityIsCurrent(fence)) setPendingAction("");
     }
   };
 
@@ -233,6 +274,7 @@ export function App() {
     ready
     && context.selected
     && !sending
+    && !contextBusy && !pendingAction
     && draft.trim().length > 0
     && utf8ByteLength(draft) <= MAX_CONTEXT_MESSAGE_TEXT_BYTES,
   );
@@ -248,7 +290,7 @@ export function App() {
               <select
                 id="task-switcher"
                 value={context.selectedContextId ?? ""}
-                disabled={contextBusy}
+                disabled={contextBusy || sending || Boolean(pendingAction)}
                 aria-label="Selected Agent Zero task"
                 onChange={(event) => void selectContext(event.currentTarget.value)}
               >
@@ -278,7 +320,7 @@ export function App() {
 
       <main className="panel-main">
         {ready
-          ? <TaskWorkspace runtime={runtime} context={context} busy={contextBusy} loadEarlier={loadEarlier} />
+          ? <TaskWorkspace runtime={runtime} context={context} busy={contextBusy || sending || Boolean(pendingAction)} loadEarlier={loadEarlier} queueItem={queueItem} decideApproval={decideApproval} pendingAction={pendingAction} />
           : <RecoveryState runtime={runtime} />}
         {notice && <p className="panel-notice" role="status">{notice}</p>}
       </main>
@@ -310,6 +352,7 @@ export function App() {
             <button type="button" disabled aria-label="Send message unavailable"><SendIcon /></button>
           </div>
         )}
+        {ready && context.selected && <div className="composer-actions"><button type="button" disabled={!canSend} onClick={() => void send(true)}>Queue message</button><span>Send after current work</span></div>}
         {draft && utf8ByteLength(draft) > MAX_CONTEXT_MESSAGE_TEXT_BYTES && (
           <p className="composer-error" role="alert">Shorten this update before sending.</p>
         )}
@@ -324,11 +367,15 @@ function TaskWorkspace({
   context,
   busy,
   loadEarlier,
+  queueItem, decideApproval, pendingAction,
 }: {
   runtime: RuntimePresentation;
   context: ContextPresentation;
   busy: boolean;
   loadEarlier: () => Promise<void>;
+  queueItem: (action: "remove" | "send", itemId: string) => Promise<void>;
+  decideApproval: (approval: LocalApprovalPresentation, decision: LocalApprovalInput["decision"]) => Promise<void>;
+  pendingAction: string;
 }) {
   if (busy && context.contexts.length === 0) {
     return <section className="task-empty" aria-busy="true"><h1>Loading your tasks…</h1></section>;
@@ -353,6 +400,27 @@ function TaskWorkspace({
   const selected = context.selected;
   return (
     <>
+      {(selected.approvals?.length ?? 0) > 0 && (
+        <section className="context-card approval-section" aria-labelledby="approval-title">
+          <h2 id="approval-title">Your approval is needed</h2>
+          <p>These choices apply only to this task. Nothing is approved automatically.</p>
+          <ul className="task-control-list">
+            {selected.approvals?.map((approval) => (
+              <li key={approval.challengeId}>
+                <strong>{approval.summary}</strong><p>{approval.origin}</p>
+                <div className="task-control-actions">
+                  {approval.options.map((decision) => (
+                    <button key={decision} type="button" disabled={busy || Date.now() >= approval.expiresAtMs}
+                      onClick={() => void decideApproval(approval, decision)}>
+                      {pendingAction === approval.challengeId ? "Sending choice…" : approvalLabel(decision)}
+                    </button>
+                  ))}
+                </div>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
       {selected.completionStatus && (
         <section className={`completion-card is-${selected.completionStatus}`} aria-labelledby="completion-title">
           <h1 id="completion-title">{completionTitle(selected.completionStatus)}</h1>
@@ -388,6 +456,19 @@ function TaskWorkspace({
         <div className="empty-activity">
           <p>Temporary task tabs are grouped and finalized by Agent Zero. Your existing tabs always stay open.</p>
         </div>
+      </section>
+
+      <section className="context-card" aria-labelledby="queue-title">
+        <div className="card-heading"><h2 id="queue-title">Queued messages</h2><span>{selected.messageQueue?.length ?? 0}</span></div>
+        {(selected.messageQueue?.length ?? 0) > 0 ? <ul className="task-control-list">
+          {selected.messageQueue?.map((item) => <li key={item.id}>
+            <p>{item.text || "Queued message"}</p>
+            <div className="task-control-actions">
+              <button type="button" disabled={busy} onClick={() => void queueItem("send", item.id)}>{pendingAction === item.id ? "Updating…" : "Send now"}</button>
+              <button type="button" disabled={busy} onClick={() => void queueItem("remove", item.id)}>Remove</button>
+            </div>
+          </li>)}
+        </ul> : <p>No queued messages from this browser. Use “Queue message” to save an update for after the current work.</p>}
       </section>
 
       {runtime.bridge.candidateReady && (
@@ -432,6 +513,12 @@ function activityLabel(activity: string): string {
     case "tool": return "Tool activity";
     default: return "Task status";
   }
+}
+
+function approvalLabel(decision: LocalApprovalInput["decision"]): string {
+  if (decision === "deny" || decision === "decline") return "Don't allow";
+  if (decision === "allow_turn") return "Allow for this turn";
+  return "Allow once";
 }
 
 function taskStatus(completion: "completed" | "canceled" | "failed" | null, status: string): string {

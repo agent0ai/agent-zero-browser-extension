@@ -93,6 +93,64 @@ export interface ContextSendMessageResult {
   clientMessageId: string;
 }
 
+export interface ContextQueueItem { id: string; text: string }
+export interface ContextQueueProjection { contextId: string; messageQueue: ContextQueueItem[] }
+export interface ContextQueueResult extends ContextQueueProjection { itemId: string; status: "queued" | "removed" | "sent" }
+export interface LocalApprovalPresentation {
+  contextId: string; challengeId: string; kind: "site" | "action"; origin: string;
+  summary: string; expiresAtMs: number; options: LocalApprovalInput["decision"][];
+}
+export type LocalApprovalInput = { challengeId: string; kind: "site" | "action"; decision: "deny" | "allow_once" | "allow_turn" | "decline" | "approve_once" };
+
+export function buildContextQueueAddParams(input: { contextId: string; clientMessageId: string; text: string }): Record<string, unknown> {
+  const { artifact_ids: _artifacts, tab_candidates: _candidates, ...params } = buildContextSendMessageParams(input);
+  return params;
+}
+
+export function buildContextQueueItemParams(contextId: string, itemId: string): Record<string, unknown> {
+  return { contract_version: 1, context_id: requireIdentifier(contextId, "CONTEXT_QUEUE_INVALID"), item_id: requireIdentifier(itemId, "CONTEXT_QUEUE_INVALID") };
+}
+
+export function parseContextQueueProjection(value: unknown): ContextQueueProjection {
+  const code = "CONTEXT_QUEUE_INVALID";
+  const root = requireExactRecord(value, ["contract_version", "context_id", "message_queue"], [], code);
+  requireContract(root, code);
+  if (!Array.isArray(root.message_queue) || root.message_queue.length > 32) throw new ContextSchemaError(code);
+  const items = root.message_queue.map((value) => {
+    const item = requireExactRecord(value, ["id", "text", "attachments", "attachment_count"], [], code);
+    if (!Array.isArray(item.attachments) || item.attachments.length !== 0 || item.attachment_count !== 0
+      || typeof item.text !== "string" || !validUnicode(item.text) || [...item.text].length > 100) throw new ContextSchemaError(code);
+    return { id: requireIdentifier(item.id, code), text: item.text };
+  });
+  if (new Set(items.map((item) => item.id)).size !== items.length) throw new ContextSchemaError(code);
+  return { contextId: requireIdentifier(root.context_id, code), messageQueue: items };
+}
+
+export function parseContextQueueResult(value: unknown): ContextQueueResult {
+  const code = "CONTEXT_QUEUE_INVALID";
+  const root = requireExactRecord(value, ["contract_version", "context_id", "message_queue", "item_id", "status"], [], code);
+  const { item_id: itemId, status, ...projection } = root;
+  return { ...parseContextQueueProjection(projection), itemId: requireIdentifier(itemId, code), status: requireEnum(status, ["queued", "removed", "sent"] as const, code) };
+}
+
+export function buildLocalApprovalParams(input: LocalApprovalInput): Record<string, unknown> {
+  const code = "LOCAL_APPROVAL_INVALID";
+  const allowed = input.kind === "site" ? ["deny", "allow_once", "allow_turn"] : input.kind === "action" ? ["decline", "approve_once"] : [];
+  if (!allowed.includes(input.decision)) throw new ContextSchemaError(code);
+  return { contract_version: 1, challenge_id: requireIdentifier(input.challengeId, code), kind: input.kind, decision: input.decision };
+}
+
+export function parseLocalApprovalResult(value: unknown, input: LocalApprovalInput): Record<string, unknown> {
+  const code = "LOCAL_APPROVAL_INVALID";
+  const root = requireExactRecord(value, ["contract_version", "challenge_id", "decision", "control_id", "status", ...(input.kind === "site" ? ["expires_at_ms"] : [])], [], code);
+  requireContract(root, code);
+  const expected = input.decision === "approve_once" ? "approved" : input.decision === "decline" ? "declined" : input.decision;
+  if (root.challenge_id !== input.challengeId || root.decision !== expected || root.status !== "accepted") throw new ContextSchemaError(code);
+  requireIdentifier(root.control_id, code);
+  if (input.kind === "site") requireCursor(root.expires_at_ms, code);
+  return { ...root };
+}
+
 function validUnicode(value: string): boolean {
   for (let index = 0; index < value.length; index += 1) {
     const unit = value.charCodeAt(index);

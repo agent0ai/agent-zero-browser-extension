@@ -22,6 +22,9 @@ export function App() {
   const [pairingNotice, setPairingNotice] = useState("");
   const [disconnecting, setDisconnecting] = useState(false);
   const [reconnecting, setReconnecting] = useState(false);
+  const [credentialBusy, setCredentialBusy] = useState(false);
+  const [credentialNotice, setCredentialNotice] = useState("");
+  const [revokeConfirmed, setRevokeConfirmed] = useState(false);
   const observerRef = useRef<ReturnType<typeof observeOptionsRuntime> | null>(null);
   const operationRef = useRef(0);
 
@@ -37,6 +40,8 @@ export function App() {
         setPairingBusy(false);
         setDisconnecting(false);
         setReconnecting(false);
+        setCredentialBusy(false);
+        setCredentialNotice("");
         setRuntime(EMPTY_RUNTIME_PRESENTATION);
         setLoadError("Live status disconnected. Check again to reconnect.");
       });
@@ -71,6 +76,33 @@ export function App() {
       operationRef.current += 1;
     };
   }, []);
+
+  const updateCredential = async (action: "rotate" | "status" | "revoke") => {
+    const observer = observerRef.current;
+    if (!observer?.connected || credentialBusy || !runtime.ready || BUILD_CHANNEL.development || (action === "revoke" && !revokeConfirmed)) return;
+    const operation = ++operationRef.current;
+    setCredentialBusy(true);
+    setCredentialNotice("");
+    try {
+      const response = await sendRuntimeMessage<{ ok: boolean; result: { status: string } }>({ type: "credential_control", action, confirmed: true });
+      if (!observer.active || operation !== operationRef.current) return;
+      if (!response.ok) throw new Error("Credential request failed");
+      setCredentialNotice(response.result.status === "no_pending"
+        ? "No key update is pending. Your saved pairing needs no changes."
+        : response.result.status === "pending"
+        ? "Key update saved. Reconnecting securely—your pairing stays saved."
+        : response.result.status === "revoked"
+        ? "Browser access removed from Agent Zero. Pair again only if you want to restore access."
+        : response.result.status === "expired"
+        ? "That key update expired. Your previous key is still saved; you can start a new update."
+        : "The updated key is active.");
+      setRevokeConfirmed(false);
+    } catch {
+      if (observer.active && operation === operationRef.current) setCredentialNotice("Could not confirm the key change. Your saved keys were kept. Reconnect and check the pending update; do not pair again.");
+    } finally {
+      if (observer.active && operation === operationRef.current) setCredentialBusy(false);
+    }
+  };
 
   const pairBrowser = async (event: Event) => {
     event.preventDefault();
@@ -107,7 +139,7 @@ export function App() {
         ? "Development identity paired. Select it in Agent Zero Browser settings, then reconnect after selection."
         : "Pairing completed. Chrome is reconnecting to Agent Zero.");
     } catch {
-      if (observer.active && operation === operationRef.current) setPairingNotice("Pairing was not completed. Create a new code in Agent Zero and try again.");
+      if (observer.active && operation === operationRef.current) setPairingNotice("Pairing could not be confirmed. Check the saved pairing status first. If Agent Zero lists this browser but the companion has no saved pairing, remove that browser in Agent Zero before creating a new code.");
     } finally {
       if (observer.active) setPairingBusy(false);
     }
@@ -207,7 +239,8 @@ export function App() {
             label="Browser control"
             detail={BUILD_CHANNEL.development
               ? limited ? "Ready for owned tabs, page reading, navigation and scrolling"
-                : "Select this browser for your chat in Agent Zero, then reconnect"
+                : paired ? "Select this browser for your chat in Agent Zero, then reconnect"
+                : "Available after pairing and browser selection"
               : connected
               ? `${runtime.bridge.actions.length} browser actions available`
               : paired
@@ -226,6 +259,7 @@ export function App() {
                   ? "Checking existing browser tabs before enabling control."
                   : "Pairing and browser control are separate. Agent Zero must enable development control and select this browser for your chat."
                 : "Waiting for the local companion. Check the installation below if it remains unavailable."}
+            {!companionDetected ? <> <a href="#companion-install">Open installation steps</a></> : null}
           </p>
         ) : null}
       </section>
@@ -301,18 +335,34 @@ export function App() {
         </section>
       )}
 
-      <details className="installation" open={!companionDetected}>
+      {!BUILD_CHANNEL.development && paired ? <details className="installation">
+        <summary>Connection security</summary>
+        <div className="installation-content">
+          <p>Pairing is saved automatically. You do not need to update the key during normal use.</p>
+          <button className="quiet-button" type="button" disabled={!connected || credentialBusy} onClick={() => void updateCredential("rotate")}>Update security key</button>{" "}
+          <button className="quiet-button" type="button" disabled={!connected || credentialBusy} onClick={() => void updateCredential("status")}>Check pending update</button>
+          <p>Remove access here to revoke this browser in Agent Zero and delete its saved local key. This requires pairing again.</p>
+          <label><input type="checkbox" checked={revokeConfirmed} disabled={!connected || credentialBusy} onChange={(event) => setRevokeConfirmed(event.currentTarget.checked)} /> I want to remove this browser’s access</label>
+          <p><button className="quiet-button is-danger" type="button" disabled={!connected || credentialBusy || !revokeConfirmed} onClick={() => void updateCredential("revoke")}>Remove browser access</button></p>
+          {!connected ? <p className="card-note">Connect to Agent Zero before changing connection security.</p> : null}
+          {credentialNotice ? <p className="form-notice" role="status">{credentialNotice}</p> : null}
+        </div>
+      </details> : null}
+
+      <details id="companion-install" className="installation" open={!companionDetected}>
         <summary>Install or repair the native companion</summary>
         <div className="installation-content">
-          <p>Run the install command on the computer running Chrome.</p>
+          <p>Install on the computer running Chrome.</p>
           <p>{BUILD_CHANNEL.development
-            ? "Build the local-development native companion first. Replace the absolute source path below with that built binary."
+            ? "Open your Agent Zero companion package. On macOS, open Install.command and follow the prompt. On Linux, run install.sh from that package. Updating keeps your saved pairing."
             : "The CLI registers the native Chrome host and keeps the companion independent of a terminal session."}</p>
-          <pre aria-label="CLI install command"><code>{BUILD_CHANNEL.development
-            ? "a0 browser-extension development install --source-binary /absolute/path/to/a0-browser-bridge --browser chrome --yes"
-            : "a0 browser-extension install"}</code></pre>
+          {BUILD_CHANNEL.development ? <details>
+            <summary>Using A0 CLI with a local source build</summary>
+            <p>Use the absolute path to the companion from your package or source build.</p>
+            <pre aria-label="Local source CLI install command"><code>a0 browser-extension development install --source-binary /absolute/path/to/a0-browser-bridge --browser chrome --yes</code></pre>
+          </details> : <pre aria-label="CLI install command"><code>a0 browser-extension install</code></pre>}
           <p className="card-note">{BUILD_CHANNEL.development
-            ? "The binary must be built with the local-development feature. Installing it does not enable browser control."
+            ? "Use a local-development package for this Development extension. After installation, keep your existing pairing or pair this profile once."
             : <>Use <code>status</code> or <code>repair</code> in place of <code>install</code> when needed.</>}</p>
           <p>Agent Zero may run in Docker, but Chrome and its native companion run on your computer—not inside the container.</p>
           <p className="card-note">{BUILD_CHANNEL.development
