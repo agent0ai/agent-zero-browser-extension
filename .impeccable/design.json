@@ -1,0 +1,101 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-09-05T00:00:00Z",
+  "title": "Design System: Agent Zero Browser Extension",
+  "extensions": {
+    "shadows": [],
+    "motion": [
+      { "name": "ease-out", "value": "cubic-bezier(.16, 1, .3, 1)", "purpose": "Shared control and status easing." },
+      { "name": "control-transition", "value": "160ms", "purpose": "Background, border and text color changes; removed for reduced motion." },
+      { "name": "status-transition", "value": "240ms", "purpose": "Persistent status color feedback; removed for reduced motion." }
+    ],
+    "breakpoints": [
+      { "name": "narrow", "value": "600px" },
+      { "name": "compact-panel", "value": "340px" }
+    ],
+    "focus": { "outline": "2px solid var(--focus)", "outlineOffset": "3px" },
+    "reviewScope": "SHIP for synthetic limited-development-ready desktop options, narrow options and narrow side-panel captures. Not fresh-install, live browser-effects, all-state or full production acceptance. Detector warnings concerned inherited Roboto Mono use."
+  },
+  "components": [
+    {
+      "name": "Primary button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "A compact next action, with a larger narrow or coarse-pointer target.",
+      "html": "<button class=\"ds-primary\">Open connection details</button>",
+      "css": ".ds-primary{min-height:40px;padding:8px 14px;border:1px solid transparent;border-radius:6px;color:#fff;background:var(--accent);font:500 13px/1.4 Rubik,Arial,sans-serif;cursor:pointer;transition:background-color 160ms var(--ease-out),border-color 160ms var(--ease-out),color 160ms var(--ease-out)}.ds-primary:hover:not(:disabled){background:var(--accent-hover)}.ds-primary:focus-visible{outline:2px solid var(--focus);outline-offset:3px}.ds-primary:disabled{opacity:.5;cursor:not-allowed}@media(max-width:600px),(pointer:coarse){.ds-primary{min-height:44px}}@media(prefers-reduced-motion:reduce){.ds-primary{transition:none}}@media(forced-colors:active){.ds-primary{border-color:ButtonText}}"
+    },
+    {
+      "name": "Quiet button",
+      "kind": "button",
+      "refersTo": "button-quiet",
+      "description": "A neutral secondary action with a restrained border.",
+      "html": "<button class=\"ds-quiet\">Check again</button>",
+      "css": ".ds-quiet{min-height:40px;padding:8px 14px;border:1px solid var(--line);border-radius:6px;color:var(--text);background:var(--surface);font:500 13px/1.4 Rubik,Arial,sans-serif;cursor:pointer;transition:background-color 160ms var(--ease-out),border-color 160ms var(--ease-out),color 160ms var(--ease-out)}.ds-quiet:hover:not(:disabled){background:var(--surface-soft);border-color:#616161}.ds-quiet:focus-visible{outline:2px solid var(--focus);outline-offset:3px}.ds-quiet:disabled{opacity:.5;cursor:not-allowed}@media(max-width:600px),(pointer:coarse){.ds-quiet{min-height:44px}}@media(prefers-reduced-motion:reduce){.ds-quiet{transition:none}}@media(forced-colors:active){.ds-quiet{border-color:ButtonText}}"
+    },
+    {
+      "name": "Disconnect button",
+      "kind": "button",
+      "refersTo": "button-danger",
+      "description": "The quiet action geometry with semantic danger text.",
+      "html": "<button class=\"ds-disconnect\">Disconnect profile</button>",
+      "css": ".ds-disconnect{min-height:40px;padding:8px 14px;border:1px solid var(--line);border-radius:6px;color:var(--danger);background:var(--surface);font:500 13px/1.4 Rubik,Arial,sans-serif;cursor:pointer;transition:background-color 160ms var(--ease-out),border-color 160ms var(--ease-out),color 160ms var(--ease-out)}.ds-disconnect:hover:not(:disabled){background:var(--surface-soft);border-color:#616161}.ds-disconnect:focus-visible{outline:2px solid var(--focus);outline-offset:3px}.ds-disconnect:disabled{opacity:.5;cursor:not-allowed}@media(max-width:600px),(pointer:coarse){.ds-disconnect{min-height:44px}}@media(prefers-reduced-motion:reduce){.ds-disconnect{transition:none}}@media(forced-colors:active){.ds-disconnect{border-color:ButtonText}}"
+    },
+    {
+      "name": "Pairing input",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Labeled pairing field using the shared neutral control surface.",
+      "html": "<label class=\"ds-field-label\" for=\"ds-server\">Agent Zero address</label><input class=\"ds-field\" id=\"ds-server\" type=\"url\" placeholder=\"http://localhost:50080\">",
+      "css": ".ds-field-label{display:block;margin-bottom:8px;color:var(--text);font:500 12px Rubik,Arial,sans-serif}.ds-field{width:100%;min-width:0;min-height:40px;padding:8px 10px;border:1px solid var(--line);border-radius:6px;color:var(--text);background:var(--surface);font:14px Rubik,Arial,sans-serif;caret-color:var(--accent-text)}.ds-field::placeholder{color:var(--muted);opacity:1}.ds-field:focus-visible{outline:2px solid var(--focus);outline-offset:3px}@media(max-width:600px){.ds-field{min-height:44px}}"
+    },
+    {
+      "name": "Task navigation",
+      "kind": "nav",
+      "description": "The native task selector appears when authorized tasks are available; this preview is illustrative.",
+      "html": "<label class=\"ds-nav-label\" for=\"ds-task\">Selected Agent Zero task</label><select class=\"ds-nav\" id=\"ds-task\"><option>Choose a task</option></select>",
+      "css": ".ds-nav-label{position:absolute;width:1px;height:1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}.ds-nav{width:100%;min-width:0;min-height:36px;padding:4px 0;border:0;color:var(--text);background:var(--bg);font:13px Rubik,Arial,sans-serif;cursor:pointer}.ds-nav:focus-visible{outline:2px solid var(--focus);outline-offset:3px}.ds-nav:disabled{opacity:.5;cursor:wait}@media(max-width:600px),(pointer:coarse){.ds-nav{min-height:44px}}"
+    },
+    {
+      "name": "Development label",
+      "kind": "chip",
+      "refersTo": "development-label",
+      "description": "A non-interactive build-channel label, never a readiness badge.",
+      "html": "<span class=\"ds-development\">Development</span>",
+      "css": ".ds-development{display:inline-block;padding:2px 7px;border:1px solid var(--line);border-radius:4px;color:var(--muted);font:11px Rubik,Arial,sans-serif}"
+    },
+    {
+      "name": "Notice container",
+      "kind": "card",
+      "refersTo": "notice",
+      "description": "A flat tonal notice within the open section hierarchy.",
+      "html": "<p class=\"ds-notice\" role=\"status\">Checking existing browser tabs before enabling control.</p>",
+      "css": ".ds-notice{margin:14px 0 0;padding:12px 14px;border-radius:6px;color:var(--muted);background:var(--surface-soft);font:12px/1.5 Rubik,Arial,sans-serif}"
+    }
+  ],
+  "narrative": {
+    "northStar": "Native Agent Zero",
+    "overview": "The extension follows the user's confirmed Agent Zero identity: local Rubik and Roboto Mono, dark neutral surfaces, compact blue controls, and plain connection guidance. It is quiet and technical, with clear status and a practical next action. Rows, restrained borders, and disclosures carry the hierarchy.",
+    "keyCharacteristics": [
+      "Native Agent Zero typography and dark neutral surfaces.",
+      "Compact blue actions and readable connection rows.",
+      "Plain pairing guidance with installation and diagnostics in disclosures.",
+      "Status language that preserves the actual control boundary."
+    ],
+    "rules": [
+      { "name": "The Status Truth Rule", "body": "Pairing, limited browser control, and full task/chat readiness remain distinct. Text and icon shape must explain state; color alone must never claim a capability.", "section": "colors" }
+    ],
+    "dos": [
+      "Do preserve local Rubik and Roboto Mono, neutral dark surfaces, and compact blue actions.",
+      "Do explain that pairing is saved once per Chrome profile across ordinary restarts.",
+      "Do keep browser selection and site approvals separate from saved pairing.",
+      "Do keep reduced-motion feedback visible and keyboard focus explicit.",
+      "Do describe limited browser control with its actual supported and unavailable actions."
+    ],
+    "donts": [
+      "Don't introduce a new visual identity, decorative card stacks, or dashboard styling.",
+      "Don't promote synthetic visual approval to production or fresh-install acceptance.",
+      "Don't expose credentials or internal admission identities as setup guidance."
+    ]
+  }
+}

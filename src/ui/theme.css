@@ -1,0 +1,76 @@
+@font-face {
+  font-family: Rubik;
+  font-style: normal;
+  font-weight: 300 900;
+  font-display: swap;
+  src: url('/fonts/rubik-variable.ttf') format('truetype');
+}
+@font-face {
+  font-family: 'Roboto Mono';
+  font-style: normal;
+  font-weight: 100 700;
+  font-display: swap;
+  src: url('/fonts/roboto-mono-variable.ttf') format('truetype');
+}
+:root {
+  color-scheme: dark;
+  font-family: Rubik, Arial, sans-serif;
+  font-size: 14px;
+  font-synthesis: none;
+  --bg: #131313;
+  --surface: #1a1a1a;
+  --surface-soft: #212121;
+  --text: #f1f1f1;
+  --muted: #b6b6b6;
+  --line: #383838;
+  --accent: #2b5ab9;
+  --accent-hover: #356bcc;
+  --accent-text: #9abbff;
+  --accent-soft: #1b2942;
+  --warning: #e9b969;
+  --danger: #ffa3a7;
+  --focus: #99baff;
+  --ease-out: cubic-bezier(.16, 1, .3, 1);
+}
+*, *::before, *::after { box-sizing: border-box; }
+html { background: var(--bg); scrollbar-color: #666 var(--bg); scrollbar-width: thin; }
+body { margin: 0; color: var(--text); background: var(--bg); line-height: 1.5; }
+button, input, textarea, select { font: inherit; }
+button { touch-action: manipulation; }
+button, input, select, textarea, summary { -webkit-tap-highlight-color: transparent; }
+button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, summary:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
+input, textarea { caret-color: var(--accent-text); }
+input::placeholder, textarea::placeholder { color: var(--muted); opacity: 1; }
+::selection { color: #fff; background: var(--accent); }
+a { color: var(--accent-text); text-underline-offset: .2em; }
+code, pre { font-family: 'Roboto Mono', monospace; font-variant-numeric: tabular-nums; }
+h1, h2, p { margin-top: 0; }
+h1, h2 { font-weight: 500; text-wrap: balance; }
+.brand-mark {
+  display: grid; place-items: center; flex: 0 0 auto; width: 34px; height: 34px;
+  border: 1px solid #626262; border-radius: 7px; color: var(--text); background: var(--surface);
+  font-size: 13px; font-weight: 600; letter-spacing: -.025em;
+}
+.primary-button, .quiet-button {
+  min-height: 40px; padding: 8px 14px; border: 1px solid transparent; border-radius: 6px;
+  font-size: 13px; font-weight: 500; line-height: 1.4; cursor: pointer;
+  transition: background-color 160ms var(--ease-out), border-color 160ms var(--ease-out), color 160ms var(--ease-out);
+}
+.primary-button { color: #fff; background: var(--accent); }
+.primary-button:hover:not(:disabled) { background: var(--accent-hover); }
+.quiet-button { color: var(--text); border-color: var(--line); background: var(--surface); }
+.quiet-button:hover:not(:disabled) { background: var(--surface-soft); border-color: #616161; }
+.quiet-button.is-danger { color: var(--danger); }
+button:disabled { cursor: not-allowed; opacity: .5; }
+.visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+/* Status stays visible throughout feedback; reduced motion removes interpolation. */
+@media (prefers-reduced-motion: reduce) {
+  .primary-button, .quiet-button, .connection-strip, .state-pill, .health-icon { transition: none; }
+}
+@media (max-width: 600px), (pointer: coarse) {
+  .primary-button, .quiet-button { min-height: 44px; }
+}
+@media (forced-colors: active) {
+  .primary-button, .quiet-button, .brand-mark { border: 1px solid ButtonText; }
+  .state-dot, .connection-dot { background: CanvasText; }
+}

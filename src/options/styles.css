@@ -1,0 +1,60 @@
+@import '../ui/theme.css';
+
+.settings-shell { width: min(820px, calc(100% - 48px)); margin: 0 auto; padding: 32px 0 48px; }
+.settings-header { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: start; gap: 12px; padding-bottom: 24px; border-bottom: 1px solid var(--line); }
+.title-row { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+h1 { margin: 0; font-size: 23px; line-height: 1.25; letter-spacing: -.02em; }
+h2 { margin: 0; font-size: 16px; line-height: 1.4; }
+.header-copy > p { margin: 5px 0 0; color: var(--muted); font-size: 13px; }
+.development-label { padding: 2px 7px; border: 1px solid var(--line); border-radius: 4px; color: var(--muted); font-size: 11px; }
+.state-pill { grid-column: 2; display: inline-flex; align-items: center; gap: 8px; justify-self: start; min-height: 24px; color: var(--muted); font-size: 12px; transition: color 240ms var(--ease-out); }
+.state-dot { width: 6px; height: 6px; flex: 0 0 auto; border-radius: 50%; background: currentColor; }
+.state-pill.is-ready { color: var(--accent-text); }
+.state-pill.is-blocked { color: var(--danger); }
+.health-panel { padding: 24px 0; border-bottom: 1px solid var(--line); }
+.section-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.health-list { display: grid; margin: 16px 0 0; padding: 0; list-style: none; }
+.health-row { display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 10px; align-items: start; padding: 11px 0; }
+.health-row + .health-row { border-top: 1px solid var(--line); }
+.health-icon { display: grid; place-items: center; height: 20px; color: var(--muted); transition: color 240ms var(--ease-out); }
+.health-icon svg { width: 20px; height: 20px; }
+.health-row > div { display: grid; grid-template-columns: 155px minmax(0, 1fr); gap: 12px; }
+.health-row strong { font-size: 13px; font-weight: 500; }
+.health-row div span { color: var(--muted); font-size: 12px; line-height: 1.5; }
+.health-row.is-ready .health-icon { color: var(--accent-text); }
+.health-row.is-blocked .health-icon { color: var(--danger); }
+.notice { margin: 14px 0 0; padding: 12px 14px; border-radius: 6px; color: var(--muted); background: var(--surface-soft); font-size: 12px; }
+.notice.is-error { color: var(--danger); }
+.pairing-panel { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr); gap: 32px; padding: 26px 0; border-bottom: 1px solid var(--line); }
+.pairing-copy > p { margin: 9px 0 0; color: var(--muted); font-size: 13px; line-height: 1.6; }
+.pairing-form { display: grid; gap: 8px; align-content: start; }
+.pairing-form label { font-size: 12px; font-weight: 500; }
+.pairing-form input { min-width: 0; width: 100%; min-height: 40px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; color: var(--text); background: var(--surface); }
+.pairing-form input + label { margin-top: 8px; }
+.pairing-form .primary-button { margin-top: 6px; }
+.form-boundary, .form-notice { margin: 3px 0 0; color: var(--muted); font-size: 11px; line-height: 1.5; }
+.form-notice { color: var(--warning); }
+.paired-actions { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; justify-content: center; }
+.installation, .diagnostics { border-bottom: 1px solid var(--line); }
+summary { min-height: 52px; padding: 16px 0; cursor: pointer; font-size: 13px; font-weight: 500; }
+.installation-content { padding: 0 0 20px; max-width: 74ch; }
+.installation-content p { margin: 0 0 10px; color: var(--muted); font-size: 12px; line-height: 1.6; }
+pre { overflow-x: auto; white-space: pre-wrap; overflow-wrap: anywhere; margin: 14px 0; padding: 14px; border: 1px solid var(--line); border-radius: 6px; color: var(--text); background: var(--surface); font-size: 12px; line-height: 1.6; }
+code { font-size: .95em; }
+.privacy-panel { padding: 22px 0; border-bottom: 1px solid var(--line); }
+.privacy-panel h2 { font-size: 13px; }
+.privacy-panel > p { margin: 8px 0 0; max-width: 74ch; color: var(--muted); font-size: 12px; line-height: 1.6; }
+.diagnostics dl { margin: 0 0 18px; }
+.diagnostics dl div { display: grid; grid-template-columns: 130px minmax(0, 1fr); gap: 16px; padding: 8px 0; }
+.diagnostics dt { color: var(--muted); font-size: 12px; }
+.diagnostics dd { margin: 0; overflow-wrap: anywhere; font-family: 'Roboto Mono', monospace; font-size: 11px; }
+@media (max-width: 600px) {
+  .settings-shell { width: calc(100% - 32px); padding-top: 20px; }
+  h1 { font-size: 21px; }
+  .health-row > div { grid-template-columns: 1fr; gap: 3px; }
+  .pairing-panel { grid-template-columns: 1fr; gap: 20px; }
+  .paired-actions { align-items: stretch; }
+  .pairing-form input { min-height: 44px; }
+  .diagnostics dl div { grid-template-columns: 95px minmax(0, 1fr); gap: 12px; }
+}
+@media (prefers-reduced-motion: reduce) { .state-pill, .health-icon { transition: none; } }
