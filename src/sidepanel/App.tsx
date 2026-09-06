@@ -1,5 +1,8 @@
 import { useEffect, useRef, useState } from "preact/hooks";
 import { BUILD_CHANNEL } from "../build-channel";
+import { AgentZeroLogo } from "../ui/AgentZeroLogo";
+import type { TabMentionChoice } from "../background/tab-mentions";
+import { Markdown } from "./Markdown";
 
 import { connectSidePanelPort, sendSidePanelRequest } from "../lib/extension";
 import {
@@ -26,7 +29,7 @@ type AuthorityFence = {
 
 export function App() {
   const [runtime, setRuntime] = useState<RuntimePresentation>(EMPTY_RUNTIME_PRESENTATION);
-  const [context, setContext] = useState<ContextPresentation>(EMPTY_CONTEXT_PRESENTATION);
+  const [context, setContextState] = useState<ContextPresentation>(EMPTY_CONTEXT_PRESENTATION);
   const [portConnected, setPortConnected] = useState(false);
   const [contextBusy, setContextBusy] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -34,9 +37,89 @@ export function App() {
   const [sending, setSending] = useState(false);
   const [notice, setNotice] = useState("");
   const [pendingAction, setPendingAction] = useState("");
+  const [tabPicker, setTabPicker] = useState(false);
+  const [tabChoices, setTabChoices] = useState<TabMentionChoice[]>([]);
+  const [tabSearch, setTabSearch] = useState("");
+  const [tabsBusy, setTabsBusy] = useState(false);
   const portRef = useRef<chrome.runtime.Port | null>(null);
+  const composerRef = useRef<HTMLTextAreaElement | null>(null);
   const loadedConnectionRef = useRef("");
+  const draftContextRef = useRef<string | null>(null);
+  const draftRevisionRef = useRef(0);
+  const listingRef = useRef(false);
   const authorityRef = useRef({ epoch: 0, connectionId: "", loadGenerationId: "" });
+
+  const setContext = (next: ContextPresentation) => {
+    if (draftContextRef.current !== next.selectedContextId) {
+      draftContextRef.current = next.selectedContextId;
+      setDraft(next.draft ?? "");
+      setTabPicker(false);
+      setTabChoices([]);
+    }
+    setContextState(next);
+  };
+
+  const updateDraft = (text: string) => {
+    draftRevisionRef.current += 1;
+    setDraft(text);
+    const port = portRef.current;
+    const contextId = draftContextRef.current;
+    if (!port || !contextId) return;
+    const fence = captureAuthority(port);
+    void sendSidePanelRequest(port, { type: "context_draft", context_id: contextId, text })
+      .catch(() => {
+        if (authorityIsCurrent(fence)) setNotice("Your draft could not be kept for reopening. Copy it before closing this panel.");
+      });
+  };
+
+  const openTabPicker = async () => {
+    const port = portRef.current;
+    const contextId = draftContextRef.current;
+    if (!port || !contextId || !runtime.ready || contextBusy || sending || tabsBusy) return;
+    const fence = captureAuthority(port);
+    setTabPicker(true);
+    setTabsBusy(true);
+    setTabChoices([]);
+    setTabSearch("");
+    try {
+      const response = await sendSidePanelRequest<{ ok: true; result: TabMentionChoice[] }>(port, { type: "tab_mention_list", context_id: contextId });
+      if (authorityIsCurrent(fence) && draftContextRef.current === contextId) setTabChoices(response.result);
+    } catch {
+      if (authorityIsCurrent(fence)) setNotice("Open tabs could not be listed. Try the @ button again.");
+    } finally { if (authorityIsCurrent(fence)) setTabsBusy(false); }
+  };
+
+  const attachTab = async (id: string) => {
+    const port = portRef.current;
+    const contextId = draftContextRef.current;
+    if (!port || !contextId || tabsBusy) return;
+    const fence = captureAuthority(port);
+    setTabsBusy(true);
+    try {
+      const response = await sendSidePanelRequest<{ ok: true; result: string }>(port, { type: "tab_mention_select", context_id: contextId, choice_id: id });
+      if (!authorityIsCurrent(fence) || draftContextRef.current !== contextId) return;
+      // The user previews and can edit/remove the reference before choosing Send.
+      const currentText = composerRef.current?.value ?? draft;
+      updateDraft(`${currentText.replace(/(^|\s)@$/, "$1").trimEnd()}${currentText.trim() && currentText.trim() !== "@" ? "\n\n" : ""}${response.result}`);
+      setTabPicker(false);
+      setTabChoices([]);
+      composerRef.current?.focus();
+    } catch {
+      if (authorityIsCurrent(fence)) setNotice("That tab changed or the picker expired. Reopen @ and choose it again.");
+    } finally { if (authorityIsCurrent(fence)) setTabsBusy(false); }
+  };
+
+  useEffect(() => {
+    const resize = () => {
+      const field = composerRef.current;
+      if (!field) return;
+      field.style.height = "0px";
+      field.style.height = `${Math.min(132, Math.max(44, field.scrollHeight))}px`;
+    };
+    resize();
+    window.addEventListener("resize", resize);
+    return () => window.removeEventListener("resize", resize);
+  }, [draft, runtime.ready, context.selectedContextId]);
 
   const captureAuthority = (port: chrome.runtime.Port): AuthorityFence => ({
     port,
@@ -112,7 +195,7 @@ export function App() {
       .catch(() => {
         if (!authorityIsCurrent(fence)) return;
         loadedConnectionRef.current = "";
-        setNotice("Tasks are temporarily unavailable. Check the connection and try again.");
+        setNotice("Chats are temporarily unavailable. Check the connection and try again.");
       })
       .finally(() => {
         if (authorityIsCurrent(fence)) setContextBusy(false);
@@ -121,7 +204,8 @@ export function App() {
 
   const refresh = async () => {
     const port = portRef.current;
-    if (!port) return;
+    if (!port || listingRef.current) return;
+    listingRef.current = true;
     const fence = captureAuthority(port);
     setRefreshing(true);
     setNotice("");
@@ -138,11 +222,27 @@ export function App() {
       }
     } catch {
       if (!authorityIsCurrent(fence)) return;
-      setNotice("Could not refresh tasks right now.");
+      setNotice("Could not refresh chats right now.");
     } finally {
+      listingRef.current = false;
       if (authorityIsCurrent(fence)) setRefreshing(false);
     }
   };
+
+  useEffect(() => {
+    if (!runtime.ready) return;
+    const checkChats = () => {
+      if (!document.hidden && !contextBusy && !sending && !pendingAction) void refresh();
+    };
+    const timer = window.setInterval(checkChats, 15_000);
+    window.addEventListener("focus", checkChats);
+    document.addEventListener("visibilitychange", checkChats);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", checkChats);
+      document.removeEventListener("visibilitychange", checkChats);
+    };
+  }, [runtime.ready, contextBusy, sending, pendingAction]);
 
   const selectContext = async (contextId: string) => {
     const port = portRef.current;
@@ -164,7 +264,7 @@ export function App() {
       setContext(parseContextPresentation(response.context));
     } catch {
       if (!authorityIsCurrent(fence)) return;
-      setNotice("That task could not be selected. Try again.");
+      setNotice("That chat could not be selected. Try again.");
     } finally {
       if (authorityIsCurrent(fence)) setContextBusy(false);
     }
@@ -196,6 +296,7 @@ export function App() {
     const port = portRef.current;
     const selected = context.selected;
     const text = draft;
+    const draftRevision = draftRevisionRef.current;
     if (
       !port
       || !runtime.ready
@@ -219,7 +320,7 @@ export function App() {
         },
       }, 120_000);
       if (!authorityIsCurrent(fence)) return;
-      setDraft((current) => current === text ? "" : current);
+      if (draftContextRef.current === selected.summary.contextId && draftRevisionRef.current === draftRevision) setDraft((current) => current === text ? "" : current);
       setNotice(queued ? "Message queued. Agent Zero can pick it up after its current work." : "Update sent to Agent Zero.");
     } catch {
       if (!authorityIsCurrent(fence)) return;
@@ -259,9 +360,9 @@ export function App() {
         context_id: approval.contextId, challenge_id: approval.challengeId, kind: approval.kind, decision,
       } }, 30_000);
       if (!authorityIsCurrent(fence)) return;
-      setNotice("Your choice was sent to Agent Zero. The task will report the browser result.");
+      setNotice("Your choice was sent to Agent Zero. The result will appear in this chat.");
     } catch {
-      if (authorityIsCurrent(fence)) setNotice("That approval was not confirmed. It may have expired; check the task before trying again.");
+      if (authorityIsCurrent(fence)) setNotice("That approval was not confirmed. It may have expired; check the chat before trying again.");
     } finally {
       if (authorityIsCurrent(fence)) setPendingAction("");
     }
@@ -282,31 +383,32 @@ export function App() {
   return (
     <div className="panel-shell">
       <header className="panel-header">
-        <span className="brand-mark" aria-hidden="true">A0</span>
+        <AgentZeroLogo />
         <div className="panel-identity">
+          <strong>Agent Zero</strong>
           {ready && context.contexts.length > 0 ? (
             <>
-              <label className="visually-hidden" htmlFor="task-switcher">Selected Agent Zero task</label>
+              <label className="visually-hidden" htmlFor="chat-switcher">Agent Zero chat</label>
               <select
-                id="task-switcher"
+                id="chat-switcher"
                 value={context.selectedContextId ?? ""}
                 disabled={contextBusy || sending || Boolean(pendingAction)}
-                aria-label="Selected Agent Zero task"
+                aria-label="Agent Zero chat"
                 onChange={(event) => void selectContext(event.currentTarget.value)}
               >
-                <option value="">Choose a task</option>
-                {context.contexts.map((item) => <option value={item.contextId} key={item.contextId}>{item.label}</option>)}
+                <option value="">Choose a chat</option>
+                {(["chat", "task"] as const).map((kind) => context.contexts.some((item) => item.kind === kind) && (
+                  <optgroup label={kind === "chat" ? "Chats" : "Tasks"} key={kind}>
+                    {context.contexts.filter((item) => item.kind === kind).map((item) => <option value={item.contextId} key={item.contextId}>{chatLabel(item.label, item.kind)}</option>)}
+                  </optgroup>
+                ))}
               </select>
-              <span title={runtime.panel.anchorOrigin ?? undefined}>
-                {BUILD_CHANNEL.development ? `${BUILD_CHANNEL.label} · ` : ""}
-                {runtime.panel.anchorOrigin ? `Anchored to ${runtime.panel.anchorOrigin}` : "No page anchor"}
-              </span>
+              {BUILD_CHANNEL.development && <span>{BUILD_CHANNEL.label}</span>}
             </>
           ) : (
-            <><strong>Agent Zero</strong><span>{BUILD_CHANNEL.development ? BUILD_CHANNEL.label : "Browser workspace"}</span></>
+            <span>{BUILD_CHANNEL.development ? BUILD_CHANNEL.label : "Chat in your browser"}</span>
           )}
         </div>
-        {ready && <span className="tab-count">{runtime.bridge.activeLeaseCount} tabs</span>}
         <button className="icon-button" type="button" aria-label="Open browser connection settings" title="Browser connection settings" onClick={() => chrome.runtime.openOptionsPage()}>
           <SettingsIcon />
         </button>
@@ -314,55 +416,73 @@ export function App() {
 
       <div className={`connection-strip ${ready ? "is-ready" : blocked ? "is-blocked" : ""}`} role="status" aria-live="polite" aria-atomic="true">
         <span className="connection-dot" aria-hidden="true" />
-        <span>{ready && context.selected ? taskStatus(context.selected.completionStatus, context.selected.summary.status) : label}</span>
+        <span>{ready && context.selected ? chatStatus(context.selected.completionStatus, context.selected.summary.status) : label}</span>
         <button type="button" disabled={refreshing || contextBusy} onClick={() => void refresh()}>{refreshing ? "Checking…" : "Check"}</button>
       </div>
 
       <main className="panel-main">
         {ready
-          ? <TaskWorkspace runtime={runtime} context={context} busy={contextBusy || sending || Boolean(pendingAction)} loadEarlier={loadEarlier} queueItem={queueItem} decideApproval={decideApproval} pendingAction={pendingAction} />
+          ? <ChatWorkspace runtime={runtime} context={context} busy={contextBusy || sending || Boolean(pendingAction)} loadEarlier={loadEarlier} queueItem={queueItem} decideApproval={decideApproval} pendingAction={pendingAction} />
           : <RecoveryState runtime={runtime} />}
         {notice && <p className="panel-notice" role="status">{notice}</p>}
       </main>
 
       <footer className="panel-footer">
+        {tabPicker && ready && context.selected && <section className="tab-picker" aria-label="Add an open Chrome tab">
+          <div className="card-heading"><strong>Add a tab reference</strong><button type="button" onClick={() => { setTabPicker(false); setTabChoices([]); }}>Cancel</button></div>
+          <p>Only the tab title and full link will be shared when you send. Page contents and tab control are not included. Check links for private information.</p>
+          <input type="search" aria-label="Find an open tab" placeholder="Find an open tab…" value={tabSearch} onInput={event => setTabSearch(event.currentTarget.value)} />
+          <ul>{tabChoices.filter(tab => `${tab.title} ${tab.url}`.toLowerCase().includes(tabSearch.toLowerCase())).map(tab => <li key={tab.id}>
+            <button type="button" disabled={tabsBusy} onClick={() => void attachTab(tab.id)}><strong>{tab.title}</strong><span>{tab.url}</span></button>
+          </li>)}</ul>
+          {tabsBusy && <p role="status">Checking tabs…</p>}
+          {!tabsBusy && tabChoices.length === 0 && <p>No shareable web tabs found. Internal Chrome pages and incognito tabs are excluded.</p>}
+        </section>}
         {ready && context.selected ? (
           <div className="composer">
             <label className="visually-hidden" htmlFor="message-agent-zero">Message Agent Zero</label>
             <textarea
               id="message-agent-zero"
+              ref={composerRef}
               rows={1}
               value={draft}
-              placeholder={context.selected.completionStatus ? "Ask a follow-up…" : "Message Agent Zero…"}
-              onInput={(event) => setDraft(event.currentTarget.value)}
+              disabled={contextBusy}
+              placeholder="Message Agent Zero…"
+              onInput={(event) => {
+                const text = event.currentTarget.value;
+                updateDraft(text);
+                if (/(^|\s)@$/.test(text)) void openTabPicker();
+              }}
               onKeyDown={(event) => {
+                if (event.key === "Escape") { setTabPicker(false); setTabChoices([]); return; }
                 if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
                   event.preventDefault();
                   void send();
                 }
               }}
             />
-            <button type="button" disabled={!canSend} aria-label="Send update" title="Send update" onClick={() => void send()}>
+            <button type="button" disabled={!canSend} aria-label="Send message" title="Send message" onClick={() => void send()}>
               {sending ? <span className="send-progress" aria-hidden="true">…</span> : <SendIcon />}
             </button>
           </div>
         ) : (
           <div className="composer-placeholder" aria-disabled="true">
-            <span>{ready ? "Select a task to send an update" : BUILD_CHANNEL.development ? "Extension chat unavailable · use Agent Zero" : "Connect the browser companion to continue"}</span>
+            <span>{ready ? "Choose a chat to message Agent Zero" : BUILD_CHANNEL.development ? "Extension chat unavailable · use Agent Zero" : "Connect the browser companion to continue"}</span>
             <button type="button" disabled aria-label="Send message unavailable"><SendIcon /></button>
           </div>
         )}
-        {ready && context.selected && <div className="composer-actions"><button type="button" disabled={!canSend} onClick={() => void send(true)}>Queue message</button><span>Send after current work</span></div>}
+        {ready && context.selected && <div className="composer-actions"><button type="button" disabled={contextBusy || sending || tabsBusy} aria-label="Add an open Chrome tab" title="Add a tab reference" onClick={() => void openTabPicker()}>@ Add tab</button></div>}
+        {ready && context.selected?.summary.status === "running" && !context.selected.completionStatus && <div className="composer-actions"><button type="button" disabled={!canSend} onClick={() => void send(true)}>Send after current reply</button></div>}
         {draft && utf8ByteLength(draft) > MAX_CONTEXT_MESSAGE_TEXT_BYTES && (
           <p className="composer-error" role="alert">Shorten this update before sending.</p>
         )}
-        <p>Closing this panel does not stop work or close your tabs.</p>
+        <p>Close and reopen to continue. Drafts stay here while connected.</p>
       </footer>
     </div>
   );
 }
 
-function TaskWorkspace({
+function ChatWorkspace({
   runtime,
   context,
   busy,
@@ -378,21 +498,21 @@ function TaskWorkspace({
   pendingAction: string;
 }) {
   if (busy && context.contexts.length === 0) {
-    return <section className="task-empty" aria-busy="true"><h1>Loading your tasks…</h1></section>;
+    return <section className="chat-empty" aria-busy="true"><h1>Loading your chats…</h1></section>;
   }
   if (context.contexts.length === 0) {
     return (
-      <section className="task-empty">
-        <h1>No authorized tasks yet</h1>
-        <p>Start a task in Agent Zero, then check again. Only tasks advertised by your paired Agent Zero instance appear here.</p>
+      <section className="chat-empty">
+        <h1>Chat with Agent Zero</h1>
+        <p>Start a chat in Agent Zero to continue it here. You can ask questions or request browser help—no scheduled task is needed.</p>
       </section>
     );
   }
   if (!context.selected) {
     return (
-      <section className="task-empty">
-        <h1>Choose a task to continue</h1>
-        <p>The browser page stays anchored separately. Selecting a task does not share this page or start browser control.</p>
+      <section className="chat-empty">
+        <h1>Pick up a conversation</h1>
+        <p>Choose a chat above to continue with Agent Zero. Selecting a chat does not share your open pages or start browser control.</p>
       </section>
     );
   }
@@ -403,7 +523,7 @@ function TaskWorkspace({
       {(selected.approvals?.length ?? 0) > 0 && (
         <section className="context-card approval-section" aria-labelledby="approval-title">
           <h2 id="approval-title">Your approval is needed</h2>
-          <p>These choices apply only to this task. Nothing is approved automatically.</p>
+          <p>These choices apply only to this chat. Nothing is approved automatically.</p>
           <ul className="task-control-list">
             {selected.approvals?.map((approval) => (
               <li key={approval.challengeId}>
@@ -421,20 +541,15 @@ function TaskWorkspace({
           </ul>
         </section>
       )}
-      {selected.completionStatus && (
-        <section className={`completion-card is-${selected.completionStatus}`} aria-labelledby="completion-title">
-          <h1 id="completion-title">{completionTitle(selected.completionStatus)}</h1>
-          <p>{selected.completionStatus === "completed"
-            ? "The task finished. You can send a follow-up without reopening browser control yourself."
-            : selected.completionStatus === "canceled"
-              ? "The task was canceled. Any retained tabs stay under your control."
-              : "The task stopped with an error. Review it in Agent Zero before retrying effects."}</p>
-        </section>
+      {selected.completionStatus && selected.completionStatus !== "completed" && (
+        <p className="panel-notice" role="status">{selected.completionStatus === "canceled"
+          ? "The last response was stopped. You can continue the conversation below."
+          : "Agent Zero encountered an error. Review the conversation before retrying browser actions."}</p>
       )}
 
       <section className="conversation" aria-labelledby="conversation-title">
         <div className="section-heading">
-          <h1 id="conversation-title">{selected.summary.label}</h1>
+          <h1 id="conversation-title" className="visually-hidden">{chatLabel(selected.summary.label, selected.summary.kind)}</h1>
           {selected.hasMoreHistory && selected.historyBefore !== null && (
             <button type="button" disabled={busy} onClick={() => void loadEarlier()}>Earlier</button>
           )}
@@ -444,23 +559,21 @@ function TaskWorkspace({
             {selected.events.map((event) => <EventItem event={event} key={`${event.sequence}:${event.correlationId ?? ""}`} />)}
           </ol>
         ) : (
-          <div className="empty-conversation"><p>No messages have been projected for this task yet.</p></div>
+          <div className="empty-conversation"><p>What would you like to talk about? Send a message below.</p></div>
         )}
       </section>
 
-      <section className="activity-card" aria-labelledby="tabs-title">
-        <div className="card-heading">
-          <h2 id="tabs-title">Task tabs</h2>
-          <span>{runtime.bridge.activeLeaseCount} active</span>
-        </div>
+      <details className="browser-details">
+        <summary>Browser access <span>{runtime.bridge.activeLeaseCount} agent-controlled {runtime.bridge.activeLeaseCount === 1 ? "tab" : "tabs"}</span></summary>
         <div className="empty-activity">
-          <p>Temporary task tabs are grouped and finalized by Agent Zero. Your existing tabs always stay open.</p>
+          <p>This counts only tabs under Agent Zero’s control across chats, not all open Chrome tabs. Your other tabs are not automatically shared or controlled.</p>
+          {runtime.bridge.activeLeaseCount === 0 && <p>You can chat normally without giving Agent Zero control of a tab.</p>}
         </div>
-      </section>
+      </details>
 
-      <section className="context-card" aria-labelledby="queue-title">
-        <div className="card-heading"><h2 id="queue-title">Queued messages</h2><span>{selected.messageQueue?.length ?? 0}</span></div>
-        {(selected.messageQueue?.length ?? 0) > 0 ? <ul className="task-control-list">
+      {(selected.messageQueue?.length ?? 0) > 0 && <details className="browser-details">
+        <summary>Queued messages <span>{selected.messageQueue?.length ?? 0}</span></summary>
+        <ul className="task-control-list">
           {selected.messageQueue?.map((item) => <li key={item.id}>
             <p>{item.text || "Queued message"}</p>
             <div className="task-control-actions">
@@ -468,8 +581,8 @@ function TaskWorkspace({
               <button type="button" disabled={busy} onClick={() => void queueItem("remove", item.id)}>Remove</button>
             </div>
           </li>)}
-        </ul> : <p>No queued messages from this browser. Use “Queue message” to save an update for after the current work.</p>}
-      </section>
+        </ul>
+      </details>}
 
       {runtime.bridge.candidateReady && (
         <section className="context-card" aria-labelledby="staged-title">
@@ -489,7 +602,7 @@ function EventItem({ event }: { event: ContextEvent }) {
     return (
       <li className={`message ${event.data.role === "user" ? "is-user" : "is-assistant"}`}>
         <span>{event.data.role === "user" ? "You" : "Agent Zero"}</span>
-        <p>{event.data.text}</p>
+        <Markdown text={event.data.text} />
       </li>
     );
   }
@@ -511,7 +624,7 @@ function activityLabel(activity: string): string {
     case "code": return "Code activity";
     case "subagent": return "Subagent activity";
     case "tool": return "Tool activity";
-    default: return "Task status";
+    default: return "Agent Zero activity";
   }
 }
 
@@ -521,19 +634,15 @@ function approvalLabel(decision: LocalApprovalInput["decision"]): string {
   return "Allow once";
 }
 
-function taskStatus(completion: "completed" | "canceled" | "failed" | null, status: string): string {
-  if (completion === "completed") return "Task complete";
-  if (completion === "canceled") return "Task canceled";
-  if (completion === "failed") return "Task failed";
-  if (status === "running") return "Working";
+function chatStatus(completion: "completed" | "canceled" | "failed" | null, status: string): string {
+  if (completion) return "Connected";
+  if (status === "running") return "Agent Zero is responding";
   if (status === "paused") return "Paused";
-  return "Connected · idle";
+  return "Connected";
 }
 
-function completionTitle(status: "completed" | "canceled" | "failed"): string {
-  if (status === "completed") return "Finished";
-  if (status === "canceled") return "Canceled";
-  return "Task failed";
+function chatLabel(label: string, kind: "chat" | "task"): string {
+  return kind === "chat" && label === "Untitled task" ? "Untitled chat" : label;
 }
 
 function RecoveryState({ runtime }: { runtime: RuntimePresentation }) {
@@ -542,12 +651,13 @@ function RecoveryState({ runtime }: { runtime: RuntimePresentation }) {
   const developmentPairing = BUILD_CHANNEL.development
     && runtime.bridge.connection.reasonCode === "development_pairing_only";
   const developmentPaired = developmentPairing && runtime.bridge.connection.reportedServerState === "paired";
+  const productionPaired = !BUILD_CHANNEL.development && runtime.bridge.connection.reportedServerState === "paired";
   return (
     <section className="recovery-card">
-      <h1>{limited ? "Ready for browser tasks" : developmentPaired ? "Pairing is saved" : blocked ? "Check your companion connection" : "Connect Chrome to Agent Zero"}</h1>
+      <h1>{limited ? "Ready for browser tasks" : blocked ? "Check your companion connection" : developmentPaired || productionPaired ? "Pairing is saved" : "Connect Chrome to Agent Zero"}</h1>
       <p>{limited
         ? "Continue in Agent Zero for tasks and site approvals. Development mode can work with owned tabs, read pages, navigate and scroll."
-        : runtime.bridge.connection.limitedTransportReady
+        : BUILD_CHANNEL.development && runtime.bridge.connection.limitedTransportReady
           ? "Checking existing browser tabs before enabling control. Chat in this extension remains unavailable."
         : developmentPairing
         ? developmentPaired
@@ -555,10 +665,12 @@ function RecoveryState({ runtime }: { runtime: RuntimePresentation }) {
           : "Pair once using a code from Agent Zero Browser settings → Development browser companion. Open setup to continue."
         : blocked
         ? "The companion could not be verified, so browser control is off. Open connection settings to check the installation."
+        : productionPaired
+        ? "In Agent Zero Browser settings, choose this browser as your default once. Existing project choices stay unchanged. If already selected, connection checks retry automatically. No new code is needed, and you can close this panel."
         : "Set up the local companion and pair this Chrome profile once. Your pairing is saved across restarts."}</p>
       {limited && <p>Chat in this extension, screenshots, clicking and typing are not available in development mode.</p>}
       <button className="primary-button" type="button" onClick={() => chrome.runtime.openOptionsPage()}>
-        {developmentPaired || limited ? "Open connection details" : blocked ? "Open repair steps" : "Open connection setup"}
+        {blocked ? "Open repair steps" : developmentPaired || productionPaired || limited ? "Open connection details" : "Open connection setup"}
       </button>
       <details className="reason-code"><summary>Connection diagnostic</summary><code>{runtime.bridge.connection.reasonCode}</code></details>
     </section>

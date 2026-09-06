@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { fingerprint } from './build-local-delivery.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const productionIdentity = JSON.parse(readFileSync(join(root, 'src/production-identity.json'), 'utf8'));
 const digest = bytes => createHash('sha256').update(bytes).digest('hex');
 const inputs = ['package.json', 'package-lock.json', 'vite.config.ts', 'src', 'public', 'options.html', 'sidepanel.html'];
 
@@ -35,7 +36,10 @@ export function inspectCandidate(directory) {
   const manifest = JSON.parse(readFileSync(join(directory, 'manifest.json'), 'utf8'));
   assert.equal(manifest.manifest_version, 3);
   assert.equal(manifest.name, 'Agent Zero Chrome Bridge');
-  assert.equal(manifest.key, undefined, 'Development key must not enter the store candidate');
+  assert.equal(manifest.key, productionIdentity.manifest_public_key, 'Only the verified production public key may enter the store candidate');
+  const keyHash = digest(Buffer.from(manifest.key, 'base64'));
+  assert.equal(keyHash, productionIdentity.public_key_sha256);
+  assert.equal(keyHash.slice(0, 32).replace(/[0-9a-f]/g, digit => String.fromCharCode(97 + parseInt(digit, 16))), productionIdentity.extension_id);
   assert.equal(manifest.content_scripts, undefined);
   assert.equal(manifest.action?.default_popup, undefined);
   assert.equal(manifest.update_url, undefined);
@@ -81,7 +85,8 @@ export function packageCandidate(output) {
     contract: 'a0.browser-bridge.store-candidate.v1', version: inspected.manifest.version,
     submitted: false, production_ready: false, source_sha256: before,
     archive: name, archive_sha256: sha256, files: inspected.hashes,
-    remaining: ['publisher_identity', 'signed_companion_release', 'runtime_acceptance', 'store_review_and_listing_assets'],
+    extension_id: productionIdentity.extension_id, store_status: productionIdentity.store_status,
+    remaining: ['signed_companion_release', 'runtime_acceptance', 'store_review_and_listing_assets'],
   }, null, 2) + '\n', { flag: 'wx' });
   writeFileSync(join(output, 'SHA256SUMS'), `${sha256}  ${name}\n`, { flag: 'wx' });
   console.log(JSON.stringify({ archive, sha256, submitted: false, production_ready: false }));

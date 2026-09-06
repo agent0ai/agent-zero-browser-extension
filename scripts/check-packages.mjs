@@ -5,6 +5,7 @@ import { resolve, sep } from 'node:path';
 
 // Build checks are not release trust or runtime admission evidence.
 const roots = process.argv.slice(2);
+const productionIdentity = JSON.parse(await readFile(new URL('../src/production-identity.json', import.meta.url), 'utf8'));
 assert(roots.length === 0 || roots.length === 2, 'Supply production and development output directories');
 for (const [directory, development] of [[roots[0] ?? 'dist', false], [roots[1] ?? 'dist-development', true]]) {
   const root = resolve(directory);
@@ -21,7 +22,10 @@ for (const [directory, development] of [[roots[0] ?? 'dist', false], [roots[1] ?
       .slice(0, 32).replace(/[0-9a-f]/g, digit => String.fromCharCode(97 + parseInt(digit, 16)));
     assert.equal(id, 'paoagmddepkmonpeboobaijlenlcokpc');
   } else {
-    assert.equal(manifest.key, undefined);
+    assert.equal(manifest.key, productionIdentity.manifest_public_key);
+    const hash = createHash('sha256').update(Buffer.from(manifest.key, 'base64')).digest('hex');
+    assert.equal(hash, productionIdentity.public_key_sha256);
+    assert.equal(hash.slice(0, 32).replace(/[0-9a-f]/g, digit => String.fromCharCode(97 + parseInt(digit, 16))), productionIdentity.extension_id);
     assert(!manifest.name.includes('(Development)'));
   }
   const files = [manifest.background.service_worker, manifest.options_page,

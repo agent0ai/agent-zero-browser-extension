@@ -1,5 +1,6 @@
 import { defineManifest } from "@crxjs/vite-plugin";
 import { buildChannelForMode, DEVELOPMENT_MANIFEST_KEY } from "./build-channel";
+import productionIdentity from "./production-identity.json";
 
 export function createManifest(mode = "production") {
   const channel = buildChannelForMode(mode);
@@ -7,7 +8,7 @@ export function createManifest(mode = "production") {
   manifest_version: 3,
   minimum_chrome_version: "120",
   name: channel.extensionName,
-  ...(channel.development ? { key: DEVELOPMENT_MANIFEST_KEY } : {}),
+  key: channel.development ? DEVELOPMENT_MANIFEST_KEY : productionIdentity.manifest_public_key,
   version: "0.1.0",
   description: "Agent Zero side panel and user-visible browser task runtime.",
   permissions: [

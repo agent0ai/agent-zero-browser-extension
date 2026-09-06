@@ -1,14 +1,13 @@
 @import '../ui/theme.css';
 
-html, body, #app { width: 100%; min-height: 100%; }
-.panel-shell { min-height: 100vh; min-height: 100dvh; display: grid; grid-template-rows: auto auto 1fr auto; }
+html, body, #app { width: 100%; height: 100%; min-width: 0; }
+.panel-shell { width: 100%; min-width: 0; height: 100vh; height: 100dvh; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto minmax(0, 1fr) auto; }
 .panel-header { display: flex; align-items: center; gap: 10px; padding: 10px 14px; }
 .panel-identity { display: grid; flex: 1; min-width: 0; gap: 2px; }
 .panel-identity strong { overflow: hidden; font-size: 14px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
 .panel-identity > span { overflow: hidden; color: var(--muted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
 .panel-identity select { width: 100%; min-width: 0; min-height: 36px; padding: 4px 0; border: 0; color: var(--text); background: var(--bg); font-size: 13px; cursor: pointer; }
 .panel-identity select:disabled { opacity: .5; cursor: wait; }
-.tab-count { color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .icon-button { display: grid; place-items: center; flex: 0 0 auto; width: 40px; height: 40px; border: 0; border-radius: 6px; color: var(--muted); background: transparent; cursor: pointer; }
 .icon-button:hover { color: var(--text); background: var(--surface-soft); }
 .icon-button svg { width: 18px; height: 18px; fill: currentColor; }
@@ -17,11 +16,11 @@ html, body, #app { width: 100%; min-height: 100%; }
 .connection-strip.is-ready { color: var(--accent-text); background: var(--accent-soft); }
 .connection-strip.is-blocked { color: var(--danger); }
 .connection-strip button { min-height: 44px; margin-left: auto; padding: 6px 0 6px 10px; border: 0; color: var(--text); background: transparent; font-size: 12px; cursor: pointer; }
-.panel-main { min-width: 0; padding: 24px 16px; }
+.panel-main { min-width: 0; min-height: 0; overflow-y: auto; overflow-wrap: anywhere; padding: 16px; }
 h1 { margin-bottom: 10px; font-size: 21px; line-height: 1.3; letter-spacing: -.02em; }
 h2 { margin-bottom: 0; font-size: 14px; }
-.task-empty { padding: 24px 0; }
-.task-empty > p, .recovery-card > p { margin: 0 0 18px; max-width: 65ch; color: var(--muted); font-size: 13px; line-height: 1.65; }
+.chat-empty { padding: 24px 0; }
+.chat-empty > p, .recovery-card > p { margin: 0 0 18px; max-width: 65ch; color: var(--muted); font-size: 13px; line-height: 1.65; }
 .context-card, .activity-card { padding: 18px 0; border-top: 1px solid var(--line); }
 .context-card > p { margin: 10px 0 0; color: var(--muted); font-size: 12px; line-height: 1.6; }
 .card-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
@@ -29,18 +28,21 @@ h2 { margin-bottom: 0; font-size: 14px; }
 .context-state.is-ready { color: var(--accent-text); }
 .empty-activity { margin-top: 10px; }
 .empty-activity p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.6; }
-.completion-card { margin-bottom: 20px; padding-bottom: 18px; border-bottom: 1px solid var(--line); }
-.completion-card h1 { color: var(--accent-text); }
-.completion-card.is-failed h1 { color: var(--danger); }
-.completion-card > p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.6; }
+.browser-details { padding: 10px 0; border-top: 1px solid var(--line); }
+.browser-details summary { min-height: 36px; align-content: center; color: var(--muted); font-size: 12px; cursor: pointer; }
+.browser-details summary span { margin-left: 8px; font-size: 11px; font-variant-numeric: tabular-nums; }
+.browser-details .empty-activity p + p { margin-top: 8px; }
 .conversation { padding: 0 0 22px; }
 .section-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .section-heading h1 { margin: 0; font-size: 18px; overflow-wrap: anywhere; }
-.section-heading button { min-height: 36px; margin-top: -6px; padding: 6px; border: 0; color: var(--accent-text); background: transparent; font-size: 12px; cursor: pointer; }
-.event-list { display: grid; gap: 20px; margin: 0; padding: 22px 0 0; list-style: none; }
+.section-heading button { min-height: 36px; margin-left: auto; padding: 6px; border: 0; color: var(--accent-text); background: transparent; font-size: 12px; cursor: pointer; }
+.event-list { display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; margin: 0; padding: 4px 0 0; list-style: none; }
 .message { min-width: 0; }
 .message > span { display: block; margin-bottom: 6px; color: var(--muted); font-size: 11px; font-weight: 500; }
 .message p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; line-height: 1.65; }
+.message .a0-markdown { font-size: 13px; }
+.message .a0-markdown p { margin-bottom: .65em; }
+.message .a0-markdown > :last-child { margin-bottom: 0; }
 .message.is-user { justify-self: end; max-width: 94%; padding: 10px 12px; border-radius: 8px; background: var(--surface-soft); }
 .activity-event { display: flex; align-items: center; gap: 8px; color: var(--muted); }
 .activity-event > span { width: 15px; height: 15px; flex: 0 0 auto; color: var(--accent-text); }
@@ -55,10 +57,20 @@ h2 { margin-bottom: 0; font-size: 14px; }
 .reason-code { margin: 24px 0 0; padding-top: 16px; border-top: 1px solid var(--line); }
 .reason-code summary { min-height: 36px; color: var(--muted); cursor: pointer; font-size: 11px; }
 .reason-code code { display: block; overflow-wrap: anywhere; color: var(--muted); font-size: 11px; }
-.panel-footer { position: sticky; bottom: 0; padding: 12px 14px; border-top: 1px solid var(--line); background: var(--bg); }
-.composer { display: flex; align-items: flex-end; gap: 8px; min-height: 50px; padding: 6px 6px 6px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-soft); }
+.panel-footer { min-width: 0; padding: 12px 14px; border-top: 1px solid var(--line); background: var(--bg); }
+.tab-picker { padding: 12px; margin-bottom: 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+.tab-picker > p { margin: 8px 0; color: var(--muted); font-size: 11px; }
+.tab-picker input { width: 100%; min-width: 0; min-height: 40px; padding: 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--text); }
+.tab-picker ul { max-height: min(24dvh, 200px); overflow-y: auto; list-style: none; padding: 0; margin: 8px 0 0; }
+.tab-picker button { min-height: 40px; border: 0; border-radius: 4px; padding: 8px; background: transparent; color: var(--text); cursor: pointer; text-align: left; }
+.tab-picker li button { display: grid; gap: 2px; width: 100%; min-width: 0; }
+.tab-picker li button:hover { background: var(--surface-soft); }
+.tab-picker li strong, .tab-picker li span { overflow-wrap: anywhere; font-size: 12px; }
+.tab-picker li span { color: var(--muted); font-size: 11px; }
+.composer { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 6px 6px 6px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-soft); }
 .composer:focus-within { border-color: var(--focus); }
-.composer textarea { width: 100%; min-height: 34px; max-height: 128px; padding: 8px 2px 6px; resize: vertical; border: 0; color: var(--text); background: transparent; font-size: 13px; line-height: 1.5; }
+.composer textarea { flex: 1 1 0; width: 0; min-width: 0; height: 44px; min-height: 44px; max-height: 132px; margin: 0; padding: 12px 0; resize: none; overflow-y: auto; border: 0; color: var(--text); background: transparent; font-size: 13px; line-height: 20px; }
+.composer textarea:focus-visible { outline: none; } /* The containing composer retains its visible focus border. */
 .composer button { display: grid; place-items: center; width: 36px; height: 36px; flex: 0 0 auto; border: 0; border-radius: 6px; color: #fff; background: var(--accent); cursor: pointer; }
 .composer button:disabled { color: var(--muted); background: var(--surface); cursor: not-allowed; }
 .composer svg { width: 16px; height: 16px; fill: currentColor; }
@@ -86,5 +98,4 @@ h2 { margin-bottom: 0; font-size: 14px; }
   .panel-identity select, .section-heading button, .reason-code summary { min-height: 44px; }
   .composer button, .composer-placeholder button { width: 44px; height: 44px; }
 }
-@media (max-width: 340px) { .tab-count { display: none; } }
 @media (prefers-reduced-motion: reduce) { .connection-strip { transition: none; } }

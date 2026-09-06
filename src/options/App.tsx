@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "preact/hooks";
 import { BUILD_CHANNEL } from "../build-channel";
+import { AgentZeroLogo } from "../ui/AgentZeroLogo";
 
 import { sendRuntimeMessage } from "../lib/extension";
 import {
@@ -137,7 +138,7 @@ export function App() {
       observer.applyResponse(captured, response.state);
       setPairingNotice(BUILD_CHANNEL.development
         ? "Development identity paired. Select it in Agent Zero Browser settings, then reconnect after selection."
-        : "Pairing completed. Chrome is reconnecting to Agent Zero.");
+        : "Pairing completed. In Agent Zero Browser settings, choose this browser as your default once. Chrome checks the connection automatically.");
     } catch {
       if (observer.active && operation === operationRef.current) setPairingNotice("Pairing could not be confirmed. Check the saved pairing status first. If Agent Zero lists this browser but the companion has no saved pairing, remove that browser in Agent Zero before creating a new code.");
     } finally {
@@ -199,7 +200,7 @@ export function App() {
   return (
     <main className="settings-shell">
       <header className="settings-header">
-        <div className="brand-mark" aria-hidden="true">A0</div>
+        <AgentZeroLogo />
         <div className="header-copy">
           <div className="title-row"><h1>Browser connection</h1>{BUILD_CHANNEL.development && <span className="development-label">Development</span>}</div>
           <p>Agent Zero companion for this Chrome profile</p>
@@ -244,7 +245,7 @@ export function App() {
               : connected
               ? `${runtime.bridge.actions.length} browser actions available`
               : paired
-                ? "Paired — waiting for browser control to become available"
+                ? runtime.bridge.phase === "BLOCKED" ? "Pairing saved — check the connection below" : "Pairing saved — reconnecting automatically"
                 : "Available after setup and connection checks"}
           />
         </ol>
@@ -258,7 +259,9 @@ export function App() {
                 ? runtime.bridge.connection.limitedTransportReady
                   ? "Checking existing browser tabs before enabling control."
                   : "Pairing and browser control are separate. Agent Zero must enable development control and select this browser for your chat."
-                : "Waiting for the local companion. Check the installation below if it remains unavailable."}
+                : paired && companionDetected
+                  ? "In Agent Zero Browser settings, choose this browser as your default once. Connection checks retry automatically; you can close this page."
+                  : "Waiting for the local companion. Check the installation below if it remains unavailable."}
             {!companionDetected ? <> <a href="#companion-install">Open installation steps</a></> : null}
           </p>
         ) : null}
@@ -319,7 +322,7 @@ export function App() {
                 : "No new pairing code is needed. In Agent Zero Browser settings → Development browser companion, choose Use this development browser for your chat. Then reconnect here."
               : connected
               ? "Continue in Agent Zero to choose browser tasks and approve site access."
-              : "No new pairing code is needed. Browser control stays off until the connection checks complete."}</p>
+              : "No new pairing code is needed. In Agent Zero Browser settings, choose this browser as your default once for chats without a project override. If already selected, just wait for the automatic connection check. Browser control stays off until checks succeed."}</p>
           </div>
           <div className="paired-actions">
             {BUILD_CHANNEL.development && runtime.canReconnectDevelopmentBrowser ? (
@@ -355,12 +358,15 @@ export function App() {
           <p>Install on the computer running Chrome.</p>
           <p>{BUILD_CHANNEL.development
             ? "Open your Agent Zero companion package. On macOS, open Install.command and follow the prompt. On Linux, run install.sh from that package. Updating keeps your saved pairing."
-            : "The CLI registers the native Chrome host and keeps the companion independent of a terminal session."}</p>
+            : "On macOS, open Agent Zero Browser Setup from the official companion download and choose Install browser companion. You can close the installer when it finishes."}</p>
           {BUILD_CHANNEL.development ? <details>
             <summary>Using A0 CLI with a local source build</summary>
             <p>Use the absolute path to the companion from your package or source build.</p>
             <pre aria-label="Local source CLI install command"><code>a0 browser-extension development install --source-binary /absolute/path/to/a0-browser-bridge --browser chrome --yes</code></pre>
-          </details> : <pre aria-label="CLI install command"><code>a0 browser-extension install</code></pre>}
+          </details> : <details>
+            <summary>Install using A0 CLI instead</summary>
+            <pre aria-label="CLI install command"><code>a0 browser-extension install</code></pre>
+          </details>}
           <p className="card-note">{BUILD_CHANNEL.development
             ? "Use a local-development package for this Development extension. After installation, keep your existing pairing or pair this profile once."
             : <>Use <code>status</code> or <code>repair</code> in place of <code>install</code> when needed.</>}</p>

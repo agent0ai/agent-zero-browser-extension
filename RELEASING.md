@@ -6,7 +6,7 @@ they do not publish to a browser store or authorize production browser control.
 
 ## Repository ownership
 
-- [Chrome extension](https://github.com/TerminallyLazy/agent-zero-browser-extension):
+- [Chrome extension](https://github.com/agent0ai/agent-zero-browser-extension):
   Manifest V3 worker, Options, side panel, cursor and browser operations.
 - [A0 Connector](https://github.com/TerminallyLazy/a0-connector):
   A0 CLI and the `native/browser-bridge` companion implementation.
@@ -17,6 +17,16 @@ The related bridge changes are being developed in isolated worktrees and are
 not implied to exist on those repositories' default branches. Record the exact
 compatible commits before distributing a coordinated release. Do not distribute
 an extension-only build as a complete installation.
+
+The owner authorized an organization repository on 2026-09-05. The
+`agent0ai/agent-zero-browser-extension` repository was created private, preserving
+the existing source visibility, and the baseline history was imported. The
+original `TerminallyLazy` remote and private release assets are retained;
+organization placement does not imply a public release or Chrome Web Store
+approval. Current source revisions must be read back after their scoped push.
+Windows and Linux are required for overhaul completion, not optional future
+support. A Mac-only catalog records that platform's availability, not completion
+of the cross-platform product.
 
 ## Prepared build workflow
 
@@ -87,9 +97,13 @@ distribution scope; public documentation is not a source-license grant.
 
 Before enabling a production publishing workflow:
 
-1. Reserve the production/beta store identities and configure publisher access.
+1. Production draft identity `nhliclifilepdkoolioacpjpijomfplj` and its public
+   key are verified and pinned. The owner manages publisher access; no beta
+   identity or publication is inferred. See `src/production-identity.json`.
 2. Complete full runtime activation, mandatory transport lanes and safe migration.
-3. Build all supported native installers and payloads with the required platform
+3. Build complete declared platform groups under
+   [signed catalog v2](planning/platform-scoped-release-catalog-v2.md), or the
+   full nine-artifact matrix under v1, with the required platform
    signatures, release catalog signature, checksums, notices/SBOM and provenance.
 4. Configure approved public trust pins and protected local or CI signing authority.
    Never commit private signing keys, publisher credentials or pairing state.

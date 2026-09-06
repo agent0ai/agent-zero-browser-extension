@@ -10,6 +10,7 @@ import type {
   ContextQueueProjection, ContextQueueResult, ContextQueueItem,
   LocalApprovalPresentation,
 } from "../protocol/context";
+import { MAX_CONTEXT_MESSAGE_TEXT_BYTES, utf8ByteLength } from "../protocol/context";
 
 const MAX_LOCAL_CONTEXT_EVENTS = 512;
 const MAX_REMEMBERED_ANCHORS = 64;
@@ -43,6 +44,7 @@ export interface ContextPanelView {
   selectedContextId: string | null;
   suggestedContextId: string | null;
   selected: ContextProjection | null;
+  draft?: string;
 }
 
 type StoredProjection = Omit<ContextProjection, "events"> & { events: Map<number, ContextEvent> };
@@ -53,7 +55,7 @@ type Panel = {
 };
 
 export class ContextRelayError extends Error {
-  constructor(public readonly reasonCode: "CONTEXT_RELAY_INACTIVE" | "CONTEXT_NOT_ADVERTISED" | "PANEL_NOT_CONNECTED") {
+  constructor(public readonly reasonCode: "CONTEXT_RELAY_INACTIVE" | "CONTEXT_NOT_ADVERTISED" | "PANEL_NOT_CONNECTED" | "DRAFT_LIMIT_EXCEEDED") {
     super(reasonCode);
     this.name = "ContextRelayError";
   }
@@ -67,6 +69,9 @@ export class ContextRelay {
   private readonly referenceCounts = new Map<string, number>();
   private readonly pendingSubscriptions = new Set<string>();
   private readonly lastSelectionByAnchor = new Map<string, string>();
+  // User-written, unsent text only. Survives viewer teardown, never sent by recovery.
+  // Exact connection resets clear it so it cannot cross paired identities.
+  private readonly drafts = new Map<string, { text: string }>();
   private mutationTail: Promise<unknown> = Promise.resolve();
 
   constructor(private readonly transport: ContextTransport) {}
@@ -88,6 +93,22 @@ export class ContextRelay {
   }
 
   currentView(panelId: string): ContextPanelView { return this.view(panelId); }
+
+  saveDraft(panelId: string, contextId: string, text: string): void {
+    this.requireSelected(panelId, contextId);
+    if (utf8ByteLength(text) > MAX_CONTEXT_MESSAGE_TEXT_BYTES) throw new ContextRelayError("DRAFT_LIMIT_EXCEEDED");
+    const key = this.draftKey(this.requirePanel(panelId).anchorKey, contextId);
+    if (!this.drafts.has(key) && text && this.drafts.size >= 64) throw new ContextRelayError("DRAFT_LIMIT_EXCEEDED");
+    if (text) this.drafts.set(key, { text });
+    else this.drafts.delete(key);
+  }
+
+  private draftKey(anchorKey: string, contextId: string): string { return JSON.stringify([anchorKey, contextId]); }
+
+  private clearSentDraft(anchorKey: string, contextId: string, sent: { text: string } | undefined, text: string): void {
+    const key = this.draftKey(anchorKey, contextId);
+    if (sent?.text === text && this.drafts.get(key) === sent) this.drafts.delete(key);
+  }
 
   async unregisterPanel(panelId: string): Promise<void> {
     await this.mutate(async () => {
@@ -203,6 +224,7 @@ export class ContextRelay {
     ) {
       throw new ContextRelayError("CONTEXT_NOT_ADVERTISED");
     }
+    const sentDraft = this.drafts.get(this.draftKey(panel.anchorKey, input.contextId));
     const result = await this.transport.contextSendMessage(input);
     if (
       connectionKey !== this.connectionKey
@@ -211,6 +233,7 @@ export class ContextRelay {
     ) {
       throw new ContextRelayError("CONTEXT_RELAY_INACTIVE");
     }
+    this.clearSentDraft(panel.anchorKey, input.contextId, sentDraft, input.text);
     return result;
   }
 
@@ -233,10 +256,13 @@ export class ContextRelay {
   async queueAdd(panelId: string, input: { contextId: string; clientMessageId: string; text: string }): Promise<ContextQueueResult> {
     return await this.mutate(async () => {
       const connectionKey = this.requireSelected(panelId, input.contextId);
+      const anchorKey = this.requirePanel(panelId).anchorKey;
+      const sentDraft = this.drafts.get(this.draftKey(anchorKey, input.contextId));
       if (!this.transport.contextQueueAdd) throw new ContextRelayError("CONTEXT_RELAY_INACTIVE");
       const result = await this.transport.contextQueueAdd(input);
       if (connectionKey !== this.requireSelected(panelId, input.contextId) || result.contextId !== input.contextId) throw new ContextRelayError("CONTEXT_RELAY_INACTIVE");
       this.acceptQueue(result);
+      this.clearSentDraft(anchorKey, input.contextId, sentDraft, input.text);
       return result;
     });
   }
@@ -296,6 +322,7 @@ export class ContextRelay {
 
   private resetConnection(connectionKey: string | null): void {
     if (this.connectionKey !== connectionKey) this.lastSelectionByAnchor.clear();
+    if (this.connectionKey !== connectionKey) this.drafts.clear();
     this.connectionKey = connectionKey;
     this.advertised.clear();
     this.projections.clear();
@@ -395,6 +422,7 @@ export class ContextRelay {
       selectedContextId: panel.selectedContextId,
       suggestedContextId: !panel.selectedContextId && remembered && this.advertised.has(remembered) ? remembered : null,
       selected: selected ? cloneProjection(selected) : null,
+      draft: panel.selectedContextId ? this.drafts.get(this.draftKey(panel.anchorKey, panel.selectedContextId))?.text ?? "" : "",
     };
   }
 

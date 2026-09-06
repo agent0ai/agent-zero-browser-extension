@@ -26,6 +26,8 @@ export interface UiRouterDependencies {
   disconnect: () => Promise<Record<string, unknown>>;
   credentialControl?: (action: "rotate" | "status" | "revoke") => Promise<Record<string, unknown>>;
   contextList: (panelId: string) => Promise<ContextPanelView>;
+  saveDraft?: (panelId: string, contextId: string, text: string) => void;
+  tabMentions?: (panelId: string, contextId: string, choiceId?: string) => Promise<unknown>;
   contextSubscribe: (panelId: string, input: ContextSubscribeInput) => Promise<ContextPanelView>;
   contextUnsubscribe: (panelId: string, contextId: string) => Promise<ContextPanelView>;
   contextSendMessage: (
@@ -94,6 +96,21 @@ export function createUiRouter(dependencies: UiRouterDependencies) {
           throw new UiRequestError("INVALID_UI_REQUEST");
         }
         return { ok: true, state: await dependencies.disconnect() };
+      case "tab_mention_list":
+      case "tab_mention_select": {
+        const selecting = message.type === "tab_mention_select";
+        if (!hasExactKeys(message, selecting ? ["type", "context_id", "choice_id"] : ["type", "context_id"])
+          || !routeContext || !dependencies.tabMentions || typeof message.context_id !== "string"
+          || (selecting && typeof message.choice_id !== "string")) throw new UiRequestError("INVALID_UI_REQUEST");
+        return { ok: true, result: await dependencies.tabMentions(routeContext.panelId, message.context_id,
+          selecting ? message.choice_id as string : undefined) };
+      }
+      case "context_draft": {
+        if (!hasExactKeys(message, ["type", "context_id", "text"]) || !routeContext || !dependencies.saveDraft
+          || typeof message.context_id !== "string" || typeof message.text !== "string") throw new UiRequestError("INVALID_UI_REQUEST");
+        dependencies.saveDraft(routeContext.panelId, message.context_id, message.text);
+        return { ok: true };
+      }
       case "context_list":
         if (!hasExactKeys(message, ["type"]) || !routeContext) {
           throw new UiRequestError("INVALID_UI_REQUEST");

@@ -1,5 +1,6 @@
 import {
   MAX_CONTEXT_EVENT_TEXT_BYTES,
+  MAX_CONTEXT_MESSAGE_TEXT_BYTES,
   MAX_CONTEXT_LIST_ITEMS,
   utf8ByteLength,
   type ContextEvent,
@@ -14,6 +15,7 @@ export interface ContextPresentation {
   selectedContextId: string | null;
   suggestedContextId: string | null;
   selected: ContextProjection | null;
+  draft?: string;
 }
 
 export const EMPTY_CONTEXT_PRESENTATION: ContextPresentation = {
@@ -154,6 +156,7 @@ export function parseContextPresentation(value: unknown): ContextPresentation {
     contexts: summaries,
     selectedContextId,
     suggestedContextId,
+    draft: typeof value.draft === "string" && utf8ByteLength(value.draft) <= MAX_CONTEXT_MESSAGE_TEXT_BYTES ? value.draft : "",
     selected: {
       summary,
       events: events as ContextEvent[],

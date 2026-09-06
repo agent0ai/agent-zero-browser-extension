@@ -155,6 +155,70 @@ const controllerFixture = (
 };
 
 describe("NativePortController", () => {
+  it.each([
+    ["Native host has exited.", "disconnected", "native_host_exited"],
+    ["Specified native messaging host not found.", "disconnected", "native_host_not_found"],
+    ["Failed to start native messaging host.", "disconnected", "native_host_start_failed"],
+    ["Access to the specified native messaging host is forbidden.", "blocked", "native_host_forbidden"],
+    ["Invalid native messaging host name specified.", "blocked", "native_host_name_invalid"],
+    ["Error when communicating with the native messaging host.", "blocked", "native_host_protocol_error"],
+    ["Private error /Users/person/secret https://private.example/?token=value", "disconnected", "native_port_disconnected"],
+    ["x".repeat(32_768), "disconnected", "native_port_disconnected"],
+    [undefined, "disconnected", "native_port_disconnected"],
+  ])("consumes and safely classifies Chrome disconnect errors: %s", async (message, state, reasonCode) => {
+    const readLastError = vi.fn(() => message);
+    const fixture = controllerFixture(undefined, { readLastError });
+    fixture.controller.connect(helloContext());
+    emitHello(fixture.port);
+    const pending = fixture.controller.pairingStatus();
+    fixture.port.disconnectListeners[0]();
+    expect(readLastError).toHaveBeenCalledTimes(1);
+    await expect(pending).rejects.toMatchObject({ reasonCode });
+    expect(fixture.controller.state).toEqual({ state, reasonCode });
+    expect(fixture.timers.callbacks.size).toBe(0);
+    expect(JSON.stringify(fixture.states)).not.toContain("private.example");
+  });
+
+  it("consumes obsolete port errors without changing replacement, user-disconnected or blocked state", () => {
+    const readLastError = vi.fn(() => "Native host has exited.");
+    const fixture = controllerFixture(undefined, { readLastError });
+    fixture.controller.connect(helloContext());
+    fixture.controller.disconnect("pairing_disconnected");
+    expect(readLastError).toHaveBeenCalledTimes(1);
+    expect(fixture.controller.state.reasonCode).toBe("pairing_disconnected");
+    fixture.controller.connect(helloContext());
+    const replacement = fixture.controller.state;
+    fixture.port.disconnectListeners[0]();
+    expect(readLastError).toHaveBeenCalledTimes(2);
+    expect(fixture.controller.state).toEqual(replacement);
+    fixture.timers.fireOnly();
+    expect(fixture.controller.state).toEqual({ state: "blocked", reasonCode: "native_hello_timeout" });
+    expect(readLastError).toHaveBeenCalledTimes(4);
+  });
+
+  it("replaces an inactive production port only once and never replays pending requests", async () => {
+    const fixture = controllerFixture();
+    fixture.controller.connect(helloContext());
+    emitHello(fixture.port, helloResult({ activation: undefined }));
+    expect(fixture.controller.retryProductionAdmission("stale")).toBe(false);
+    const pending = fixture.controller.pairingStatus();
+    const rejected = expect(pending).rejects.toBeInstanceOf(NativeConnectionError);
+    expect(fixture.controller.retryProductionAdmission("connection-one")).toBe(false);
+    fixture.controller.disconnect("pairing_disconnected");
+    await rejected;
+    expect(fixture.controller.retryProductionAdmission("connection-one")).toBe(false);
+    fixture.controller.connect(helloContext());
+    fixture.port.messageListeners.at(-1)!({ jsonrpc: "2.0", id: "hello:worker-one",
+      result: helloResult({ connection_id: "connection-two", activation: undefined }) });
+    const posted = fixture.port.postMessage.mock.calls.length;
+    expect(fixture.controller.retryProductionAdmission("connection-two")).toBe(true);
+    expect(fixture.controller.state.reasonCode).toBe("production_admission_retry");
+    expect(fixture.controller.retryProductionAdmission("connection-two")).toBe(false);
+    expect(fixture.port.postMessage.mock.calls).toHaveLength(posted);
+    emitHello(fixture.port); // The detached old port cannot promote authority.
+    expect(fixture.controller.state.state).toBe("disconnected");
+  });
+
   it.each(["posted", "invalid", "send-failed", "replacement", "hook-throws"])("runs reconcile replay hook only after a valid original-port response: %s", async (mode) => {
     let release!: (value: Record<string, unknown>) => void;
     const result = new Promise<Record<string, unknown>>((resolve) => { release = resolve; });

@@ -112,6 +112,14 @@ export function canReconnectDevelopmentBrowser(connection: NativeConnectionSnaps
     && connection.limitedTransportReady !== true;
 }
 
+/** Transport retry only; pairing and selection remain Core-owned. */
+export function canRetryProductionAdmission(connection: NativeConnectionSnapshot): boolean {
+  return !BUILD_CHANNEL.development && connection.state === "ready" && !!connection.connectionId
+    && connection.reportedServerState === "paired" && connection.serverState === "paired_inactive"
+    && connection.activationReady === false && connection.reasonCode === "native_pairing_only"
+    && !connection.developmentAdmission && connection.limitedTransportReady !== true;
+}
+
 export interface NativeHelloContext {
   installInstanceId: string;
   loadGenerationId: string;
@@ -185,6 +193,8 @@ export class NativeConnectionError extends Error {
 
 interface NativePortDependencies {
   connectNative: (hostName: string) => chrome.runtime.Port;
+  // Chrome exposes this only during its synchronous disconnect callback.
+  readLastError: () => string | undefined;
   extensionId: string;
   extensionVersion: string;
   onState: (snapshot: NativeConnectionSnapshot) => void;
@@ -300,6 +310,30 @@ const errorProjection = (error: RpcResponse["error"]): {
   return { a0Code, outcome, retryable: data.retryable === true };
 };
 
+const disconnectProjection = (message: string | undefined): {
+  state: "disconnected" | "blocked";
+  reasonCode: string;
+} => {
+  // Match only fixed Chrome diagnostics. Never persist/project its raw text,
+  // which may contain local paths or other browser-supplied details.
+  switch (message) {
+    case "Native host has exited.":
+      return { state: "disconnected", reasonCode: "native_host_exited" };
+    case "Specified native messaging host not found.":
+      return { state: "disconnected", reasonCode: "native_host_not_found" };
+    case "Failed to start native messaging host.":
+      return { state: "disconnected", reasonCode: "native_host_start_failed" };
+    case "Access to the specified native messaging host is forbidden.":
+      return { state: "blocked", reasonCode: "native_host_forbidden" };
+    case "Invalid native messaging host name specified.":
+      return { state: "blocked", reasonCode: "native_host_name_invalid" };
+    case "Error when communicating with the native messaging host.":
+      return { state: "blocked", reasonCode: "native_host_protocol_error" };
+    default:
+      return { state: "disconnected", reasonCode: "native_port_disconnected" };
+  }
+};
+
 export class NativePortController {
   private port: chrome.runtime.Port | null = null;
   private serial = 0;
@@ -325,6 +359,7 @@ export class NativePortController {
   ) {
     this.dependencies = {
       connectNative: dependencies?.connectNative ?? ((hostName) => chrome.runtime.connectNative(hostName)),
+      readLastError: dependencies?.readLastError ?? (() => globalThis.chrome?.runtime?.lastError?.message),
       extensionId: dependencies?.extensionId ?? chrome.runtime.id,
       extensionVersion: dependencies?.extensionVersion ?? chrome.runtime.getManifest().version,
       onState,
@@ -416,6 +451,16 @@ export class NativePortController {
       // The native port may already be closed.
     }
     this.transition("disconnected", reasonCode);
+  }
+
+  retryProductionAdmission(expectedConnectionId: string): boolean {
+    // Do not interrupt a user's pairing/status/disconnect request, touch a
+    // replacement port, or promote the old hello. The lifecycle owns the next
+    // fresh connect; no pending request or operation is replayed here.
+    if (!canRetryProductionAdmission(this.snapshot)
+      || this.snapshot.connectionId !== expectedConnectionId || this.pending.size > 0) return false;
+    this.disconnect("production_admission_retry");
+    return true;
   }
 
   pairingStatus(options: NativeRequestOptions = {}): Promise<PairingStatusResult> {
@@ -850,13 +895,16 @@ export class NativePortController {
   }
 
   private handleDisconnect(serial: number): void {
+    // Consume lastError before the generation guard, including our own closed
+    // and obsolete ports. Reading it later would leave an unchecked Chrome error.
+    const failure = disconnectProjection(this.dependencies.readLastError());
     if (!this.isCurrent(serial)) return;
     this.port = null;
     this.clearHelloTimer();
-    this.rejectAllPending("native_port_disconnected");
+    this.rejectAllPending(failure.reasonCode);
     this.inboundLiveIds.clear();
     this.helloContext = null;
-    if (this.snapshot.state !== "blocked") this.transition("disconnected", "native_port_disconnected");
+    if (this.snapshot.state !== "blocked") this.transition(failure.state, failure.reasonCode);
   }
 
   private block(serial: number, reasonCode: string): void {

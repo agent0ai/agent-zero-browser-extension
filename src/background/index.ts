@@ -10,15 +10,18 @@ import {
   NativeRequestError,
   browserConnectionAuthorityKey,
   canReconnectDevelopmentBrowser,
+  canRetryProductionAdmission,
   type NativeConnectionSnapshot,
   type NativeHelloContext,
   type NativeRequestHandler,
 } from "./native-port";
+import { reconnectAlarmAction } from "./native-reconnect";
 import { extensionIdentityApproved } from "./release-trust";
 import { buildBrowserReconcileResult, parseBrowserReconcileRequest } from "../protocol/native";
 import { RuntimeStore, type StagedTabCandidate } from "./runtime-store";
 import { createUiRouter } from "./ui-router";
 import { ContextRelay, ContextRelayError } from "./context-relay";
+import { TabMentions } from "./tab-mentions";
 import { CriticalEventRelay } from "./critical-events";
 import { ChromeScreenshotDebuggerHost } from "./debugger-host";
 import type {
@@ -30,6 +33,7 @@ import type { BrowserAckEventsRequest } from "../protocol/browser-events";
 import { hasExactKeys, isRecord, validOpaqueId } from "../protocol/rpc";
 import { NativeLifecycleQueue, type NativeStateGuard } from "./native-lifecycle";
 import { BUILD_CHANNEL } from "../build-channel";
+import { operationalInboundSurfaceReady } from "./operational-methods";
 
 const NATIVE_RECONNECT_ALARM = "a0.browser-bridge.native-reconnect.v1";
 const SIDE_PANEL_PORT = "a0.browser-bridge.side-panel.v1";
@@ -47,39 +51,6 @@ const REQUIRED_RUNTIME_PERMISSIONS: chrome.runtime.ManifestPermissions[] = [
   "debugger",
   "contextMenus",
 ];
-const REQUIRED_OPERATIONAL_INBOUND_METHODS = [
-  "credential.changed",
-  "bridge.ping",
-  "context.snapshot",
-  "context.event",
-  "context.complete",
-  "context.queue_updated",
-  "browser.perform",
-  "browser.cancel",
-  "browser.finalize_turn",
-  "browser.resolve_challenge",
-  "browser.reconcile",
-  "browser.ack_events",
-  "artifact.begin",
-  "artifact.chunk",
-  "artifact.end",
-  "artifact.abort",
-] as const;
-const IMPLEMENTED_OPERATIONAL_INBOUND_METHODS = new Set([
-  "credential.changed",
-  "bridge.ping",
-  "context.snapshot",
-  "context.event",
-  "context.complete",
-  "context.queue_updated",
-  "browser.perform",
-  "browser.cancel",
-  "browser.finalize_turn",
-  "browser.resolve_challenge",
-  "browser.reconcile",
-  "browser.ack_events",
-]);
-
 const runtimeStore = new RuntimeStore();
 const contentHost = new ContentRuntimeHost();
 const debuggerHost = new ChromeScreenshotDebuggerHost();
@@ -103,6 +74,7 @@ type PanelPortRecord = {
 };
 
 const panelPorts = new Map<chrome.runtime.Port, PanelPortRecord>();
+const tabMentions = new TabMentions({ query: () => chrome.tabs.query({}), get: id => chrome.tabs.get(id) });
 
 let bootPromise: Promise<void> | null = null;
 const nativeLifecycle = new NativeLifecycleQueue(() => nativePort.state);
@@ -262,9 +234,7 @@ async function helloContext(): Promise<NativeHelloContext> {
       storageMigrationState: snapshot.activationEvidence.storageMigrationState,
       chromePermissionsReady: await chromePermissionsReady(),
       legacyControlPlaneInactive: snapshot.activationEvidence.legacyControlPlaneInactive,
-      operationalMethodSurfaceReady: REQUIRED_OPERATIONAL_INBOUND_METHODS.every(
-        (method) => IMPLEMENTED_OPERATIONAL_INBOUND_METHODS.has(method),
-      ),
+      operationalMethodSurfaceReady: operationalInboundSurfaceReady(),
     },
   };
 }
@@ -377,6 +347,7 @@ const nativePort = new NativePortController(
     // Revoke stream delivery synchronously, before any queued storage work.
     if (snapshot.state !== "ready" || snapshot.activationReady !== true) {
       contextRelay.deactivate();
+      tabMentions.clear();
     }
     if (!browserConnectionAuthorityKey(snapshot)) {
       criticalEventRelay.deactivate();
@@ -486,6 +457,20 @@ const routeUiRequest = createUiRouter({
     if (result.status === "revoked") nativePort.disconnect("credential_revoked");
     return result;
   },
+  tabMentions: async (panelId, contextId, choiceId) => {
+    requireContextUiReady();
+    const connection = contextRelay.requireSelected(panelId, contextId);
+    const scope = JSON.stringify([connection, panelId, contextId]);
+    const current = () => {
+      try { requireContextUiReady(); return contextRelay.requireSelected(panelId, contextId) === connection; }
+      catch { return false; }
+    };
+    return choiceId === undefined ? await tabMentions.list(scope, current) : await tabMentions.select(scope, choiceId, current);
+  },
+  saveDraft: (panelId, contextId, text) => {
+    requireContextUiReady();
+    contextRelay.saveDraft(panelId, contextId, text);
+  },
   contextList: async (panelId) => {
     requireContextUiReady();
     return await contextRelay.list(panelId);
@@ -546,7 +531,7 @@ function reconnectDelayMs(attempt: number): number {
   return 270_000 + jitter;
 }
 
-async function scheduleReconnect(guard?: NativeStateGuard): Promise<void> {
+async function scheduleReconnect(guard?: NativeStateGuard, admissionOnly = false): Promise<void> {
   guard?.();
   const currentAttempt = runtimeStore.snapshot.session.reconnectAttempt;
   const nextAttempt = Math.min(currentAttempt + 1, 32);
@@ -557,9 +542,12 @@ async function scheduleReconnect(guard?: NativeStateGuard): Promise<void> {
     nextReconnectAtMs,
   }));
   guard?.();
-  await setPhaseIfAllowed("RETRY_WAIT", guard);
+  // A valid paired-but-inactive port remains available for pairing diagnostics.
+  // It has no browser authority and must be replaced, not promoted, on retry.
+  if (!admissionOnly) await setPhaseIfAllowed("RETRY_WAIT", guard);
   guard?.();
-  chrome.alarms.create(NATIVE_RECONNECT_ALARM, { when: nextReconnectAtMs });
+  await chrome.alarms.create(NATIVE_RECONNECT_ALARM, { when: nextReconnectAtMs });
+  guard?.();
   broadcastPanelState();
 }
 
@@ -602,6 +590,18 @@ async function handleNativeState(connection: NativeConnectionSnapshot, guard: Na
       guard();
       break;
     case "ready":
+      if (canRetryProductionAdmission(connection)) {
+        await setPhaseIfAllowed("RECONCILING", guard);
+        guard();
+        const pendingAt = runtimeStore.snapshot.session.nextReconnectAtMs;
+        if (pendingAt !== null && pendingAt > Date.now()) {
+          await chrome.alarms.create(NATIVE_RECONNECT_ALARM, { when: pendingAt });
+        } else {
+          await scheduleReconnect(guard, true);
+        }
+        guard();
+        break;
+      }
       await runtimeStore.updateSession((session) => ({
         ...session,
         reconnectAttempt: 0,
@@ -625,8 +625,11 @@ async function handleNativeState(connection: NativeConnectionSnapshot, guard: Na
       await setPhaseIfAllowed("DISCONNECTED", guard);
       guard();
       if (connection.reasonCode === "development_reconnect_requested"
+        || connection.reasonCode === "production_admission_retry"
         || (previous.state === "ready" && runtimeStore.snapshot.session.reconnectAttempt === 0)) {
-        await runtimeStore.updateSession((session) => ({ ...session, reconnectAttempt: 1 }));
+        if (connection.reasonCode !== "production_admission_retry") {
+          await runtimeStore.updateSession((session) => ({ ...session, reconnectAttempt: 1 }));
+        }
         guard();
         await connectNative(false, guard);
       } else {
@@ -641,6 +644,7 @@ async function handleNativeState(connection: NativeConnectionSnapshot, guard: Na
     || runtimeStore.snapshot.lifecycle.phase !== "READY"
   ) {
     contextRelay.deactivate();
+    tabMentions.clear();
   }
   if (!browserRuntimeReady()) {
     criticalEventRelay.deactivate();
@@ -650,9 +654,28 @@ async function handleNativeState(connection: NativeConnectionSnapshot, guard: Na
 
 async function ensureReconnectAlarm(): Promise<void> {
   const snapshot = runtimeStore.snapshot;
-  if (snapshot.session.connection.state === "ready" || snapshot.session.connection.state === "blocked") return;
+  const admissionOnly = canRetryProductionAdmission(snapshot.session.connection);
+  if ((snapshot.session.connection.state === "ready" && !admissionOnly) || snapshot.session.connection.state === "blocked") return;
   const existing = await chrome.alarms.get(NATIVE_RECONNECT_ALARM);
-  if (!existing) await scheduleReconnect();
+  if (!existing) await scheduleReconnect(undefined, admissionOnly);
+}
+
+async function handleReconnectAlarm(scheduledTime: number): Promise<void> {
+  await ensureBooted();
+  const session = runtimeStore.snapshot.session;
+  const live = nativePort.state;
+  const action = reconnectAlarmAction(live, session.connection, session.nextReconnectAtMs, scheduledTime);
+  if (action === "connect") await connectNative();
+  if (action !== "admission" || !live.connectionId) return;
+  if (nativePort.retryProductionAdmission(live.connectionId)) return;
+  // A pending user request wins over the timer. Retry later only if the exact
+  // inactive connection still exists; a disconnect/revoke/replacement wins.
+  const guard = () => {
+    if (!canRetryProductionAdmission(nativePort.state) || nativePort.state.connectionId !== live.connectionId) {
+      throw new NativeRequestError("The connection changed before retry.", "INVALID_STATE");
+    }
+  };
+  await scheduleReconnect(guard, true);
 }
 
 async function ensureContextMenus(): Promise<void> {
@@ -738,7 +761,7 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
 
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === NATIVE_RECONNECT_ALARM) {
-    void ensureBooted().then(() => connectNative());
+    void handleReconnectAlarm(alarm.scheduledTime).catch(() => undefined);
     return;
   }
   if (alarm.name === SITE_CHALLENGE_EXPIRY_ALARM) {
@@ -749,14 +772,14 @@ chrome.alarms.onAlarm.addListener((alarm) => {
 chrome.runtime.onConnect.addListener((port) => {
   void ensureBooted().then(() => {
     if (port.name !== SIDE_PANEL_PORT && port.name !== "agent-zero-sidepanel") return;
-    if (port.sender?.id !== chrome.runtime.id) return;
+    if (!port.sender || !validExtensionPageSender(port.sender)) return;
     const panelId = `panel:${crypto.randomUUID()}`;
     const anchorOrigin = safeHttpOrigin(port.sender?.tab?.url);
     const panel: PanelPortRecord = {
       panelId,
       anchorKey: typeof port.sender?.tab?.id === "number"
         ? `tab:${port.sender.tab.id}`
-        : `document:${port.sender?.documentId ?? panelId}`,
+        : "browser-profile",
       anchorOrigin,
     };
     panelPorts.set(port, panel);

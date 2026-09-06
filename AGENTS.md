@@ -94,6 +94,11 @@ product-reference material is not included and is not repository instruction.
   must not mark the operational method surface ready until the companion/Core
   decoders, receipt cache, cancellation, and approval/revocation paths pass
   their frozen acceptance gates.
+  The local operational-surface check is direction-specific: the combined
+  protocol method inventory is not an inbound-handler requirement. Output
+  `artifact.begin/chunk/end/abort` are extension-to-companion requests, and
+  input uploads use the private native handoff; neither grants an inbound
+  worker artifact handler. Missing actual inbound handlers still fail closed.
 - Runtime operations require both the synchronous worker-owned native
   connection and its persisted lifecycle projection to remain identically
   admitted (full production activation or the exact separate limited
@@ -126,24 +131,41 @@ product-reference material is not included and is not repository instruction.
 
 ## Manifest and UX
 
+- Both header surfaces use `src/ui/AgentZeroLogo.tsx`, with unchanged symbol
+  geometry from Agent Zero Core's `webui/public/icon.svg`. Render monochrome
+  using the text color, as Core's sidebar does; no placeholder initials or
+  remote asset request. The 34px decorative SVG sits beside the visible name,
+  is hidden from assistive technology, and adds no focus target. This visual
+  reuse does not establish trademark/license clearance for public releases.
+
 - Options and sidepanel share the Native Agent Zero visual language in
   `src/ui/theme.css`: local Rubik/Roboto Mono fonts with their bundled OFL
   licenses, neutral dark surfaces, compact blue-accented controls and reduced-
   motion-safe status feedback. Keep connection rows and the next available
-  action primary; pairing is saved per Chrome profile, while chat selection
+  action primary; pairing is saved per Chrome profile, while browser selection
   and site approvals remain separate. Installation and diagnostics belong in
   disclosures, and presentation changes never alter worker authority.
   Packaged host installation is the first setup instruction; source-build CLI
   commands belong in a secondary disclosure, not the primary onboarding path.
+  Production setup directs the user to choose this browser once as Agent Zero's
+  default in protected Browser settings, even without an open chat. Existing
+  explicit project choices remain unchanged. Saved pairing alone never proves
+  that the default was saved or that browser control is ready; if already
+  selected, describe the existing automatic admission retry instead of asking
+  for a new code or repeated per-chat setup. Development instructions stay separate.
 
 - Local development is selected only by `vite build --mode local-development`
   (`npm run build:development`). It uses `dist-development`, the pinned public
   manifest key/ID in `src/build-channel.ts`, and native host
   `io.agentzero.browser_bridge.dev`. Keep its visible Development label and
   separate identity. No runtime preference may change the build channel.
-- The default production build has no development manifest key and still uses
-  `io.agentzero.browser_bridge`. Development identity is not production release
-  trust; preserve `release-trust.ts` and the independent activation gates.
+- The default production build pins the owner-supplied store public key in
+  `src/production-identity.json`, deriving `nhliclifilepdkoolioacpjpijomfplj`, and
+  uses `io.agentzero.browser_bridge`. The store item is a draft. Key and ID
+  recognition do not imply publication, signed companion trust or runtime
+  admission. Development retains its separate key/ID and is never accepted by
+  the production identity check. Package inspectors require the exact reviewed
+  public key and verify its SHA-256/derived ID; never accept an arbitrary key.
 - Pairing-only development hello and pairing responses require the exact
   `a0.browser-bridge.development-trust.v1` / `local-development` profile, with
   connector-session and browser-control readiness both false. Its native RPC
@@ -165,6 +187,64 @@ product-reference material is not included and is not repository instruction.
   control separately, send no selection authority, and expose no admission
   identity/credential projection. No build or source test establishes live
   limited-control acceptance.
+
+- Production paired-but-inactive hello responses use the worker's existing
+  persisted reconnect deadline/attempt count and bounded 30/60/120-second then
+  under-five-minute backoff. Keep the old port non-operational until its alarm
+  requests a fresh native hello; never promote it or replay requests. Alarm
+  handling requires the exact current/persisted connection and deadline, and
+  pending user requests win over retries. Healthy unpaired, fully admitted,
+  blocked, revoked, user-disconnected and development-inactive states cannot
+  request production admission retries. Fresh admission clears the alarm and
+  resets backoff. Options/panel describe automatic checks but transmit no Core
+  selection authority and are never keepalive owners. Actual development builds
+  keep their truthful badge and limited instructions; production copy must not
+  advertise those restrictions. Mac packaged setup is primary; CLI instructions
+  stay in an optional disclosure. Changing build-channel text never migrates
+  development credentials or authorizes production control.
+  The side panel is conversation-first: Agent Zero branding stays primary,
+  chats precede optional tasks in the switcher, and completed replies do not
+  replace the conversation with a task-completion dashboard. Browser access is
+  a secondary disclosure; its count is explicitly agent-controlled tabs across
+  chats, never an inventory of the user's open Chrome tabs. Empty queues stay
+  hidden. The bounded auto-growing composer and independently scrolling message
+  area must fit narrow panels without horizontal overflow. This presentation
+  changes no context selection, tab ownership, sharing, or approval authority.
+  A global side-panel viewer uses a stable browser-profile presentation anchor,
+  not a new document ID on each open. The worker retains bounded per-anchor/chat
+  unsent user drafts across viewer closure; these are never auto-sent, logged,
+  written to disk or included in native RPC. Clear only the exact accepted send
+  version; later edits and unconfirmed sends stay intact. Drafts and selection
+  remain connection-scoped and are cleared on native identity/connection reset,
+  not panel close. This is not browser-restart durability. A visible mounted
+  panel refreshes the authorized WebUI chat list every 15 seconds and on focus,
+  with no overlapping refresh or work while sending/switching. Existing protocol
+  limits (64 advertised contexts) remain; refreshing never selects a new chat or
+  grants access. Closing the viewer removes its timer and presentation reference
+  only; it never cancels agent work or disconnects the companion.
+  The explicit @ picker lists at most 200 non-incognito HTTP(S) tabs only after
+  the user asks. Provider tab IDs stay inside the worker behind expiring,
+  panel/context/connection-bound choices. Re-read the selected tab and reject
+  changed URL/title, pending navigation, expiry or lost selection. Adding a tab
+  inserts an editable Markdown title/link reference into the user's draft;
+  only Send shares that text. The picker warns that full links can contain
+  private information. It does not attach DOM/page contents, claim a lease,
+  grant site/action permission, or mutate/close the user's tab. No tab metadata
+  goes to disk, logs, or automatic network requests.
+  Viewer ports require an extension-page sender, not merely the extension ID
+  that content-script senders also carry. Content scripts cannot open a viewer
+  session to enumerate chats/tabs or access drafts.
+  Chat text uses a bounded inert Markdown subset: formatting never executes
+  HTML or fetches images/resources. Only explicit HTTP(S) links are clickable;
+  parser budget exhaustion preserves the remaining text as plain text.
+  Native-port disconnect callbacks synchronously consume Chrome's lastError
+  even for obsolete or intentionally closed ports; generation checks still
+  prevent those callbacks from changing replacement/user-disconnected/blocked
+  state. Classify only fixed Chrome messages into pathless reason codes, never
+  persist or project raw error text. Host exit, missing installation and start
+  failure retain bounded reconnect; forbidden host, invalid name and protocol
+  errors block rather than retry. This handles Chrome's unchecked-error warning,
+  not the underlying native process failure, and grants no runtime authority.
 
 - Keep `minimum_chrome_version` at 120 or newer and preserve only the
   permissions frozen in [`planning/mv3-runtime-v1.md`](planning/mv3-runtime-v1.md).
@@ -249,7 +329,7 @@ npx tsc --noEmit
 Inspect `dist/manifest.json` after every manifest or build-pipeline change.
 For local-development changes also build and inspect
 `dist-development/manifest.json`; verify the public key derives the pinned ID
-and default production output has no key.
+and production output derives the separate recorded store identity.
 Tests must cover worker restart/session loss, forged and stale messages, exact
 lease finalization, two-context isolation, user takeover, cursor teardown,
 side-panel churn, native-host loss, and fail-closed restricted targets.
