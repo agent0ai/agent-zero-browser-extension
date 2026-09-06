@@ -94,6 +94,11 @@ product-reference material is not included and is not repository instruction.
   must not mark the operational method surface ready until the companion/Core
   decoders, receipt cache, cancellation, and approval/revocation paths pass
   their frozen acceptance gates.
+  The local operational-surface check is direction-specific: the combined
+  protocol method inventory is not an inbound-handler requirement. Output
+  `artifact.begin/chunk/end/abort` are extension-to-companion requests, and
+  input uploads use the private native handoff; neither grants an inbound
+  worker artifact handler. Missing actual inbound handlers still fail closed.
 - Runtime operations require both the synchronous worker-owned native
   connection and its persisted lifecycle projection to remain identically
   admitted (full production activation or the exact separate limited

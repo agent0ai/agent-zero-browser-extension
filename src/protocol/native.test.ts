@@ -21,6 +21,7 @@ import {
 } from "./native";
 import { MAX_NATIVE_MESSAGE_BYTES } from "./rpc";
 import { BROWSER_RUNTIME_ACTIONS, BROWSER_RUNTIME_CAPABILITIES } from "../background/browser-runtime";
+import { operationalInboundSurfaceReady } from "../background/operational-methods";
 
 const EXTENSION_ID = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const DIGEST = "0".repeat(64);
@@ -206,7 +207,7 @@ describe("native hello and activation schemas", () => {
       storageMigrationState: "v1_ready",
       chromePermissionsReady: true,
       legacyControlPlaneInactive: true,
-      operationalMethodSurfaceReady: true,
+      operationalMethodSurfaceReady: operationalInboundSurfaceReady(),
     }, {
       extensionId: EXTENSION_ID,
       installInstanceId: "install-one",

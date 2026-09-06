@@ -32,6 +32,7 @@ import type { BrowserAckEventsRequest } from "../protocol/browser-events";
 import { hasExactKeys, isRecord, validOpaqueId } from "../protocol/rpc";
 import { NativeLifecycleQueue, type NativeStateGuard } from "./native-lifecycle";
 import { BUILD_CHANNEL } from "../build-channel";
+import { operationalInboundSurfaceReady } from "./operational-methods";
 
 const NATIVE_RECONNECT_ALARM = "a0.browser-bridge.native-reconnect.v1";
 const SIDE_PANEL_PORT = "a0.browser-bridge.side-panel.v1";
@@ -49,39 +50,6 @@ const REQUIRED_RUNTIME_PERMISSIONS: chrome.runtime.ManifestPermissions[] = [
   "debugger",
   "contextMenus",
 ];
-const REQUIRED_OPERATIONAL_INBOUND_METHODS = [
-  "credential.changed",
-  "bridge.ping",
-  "context.snapshot",
-  "context.event",
-  "context.complete",
-  "context.queue_updated",
-  "browser.perform",
-  "browser.cancel",
-  "browser.finalize_turn",
-  "browser.resolve_challenge",
-  "browser.reconcile",
-  "browser.ack_events",
-  "artifact.begin",
-  "artifact.chunk",
-  "artifact.end",
-  "artifact.abort",
-] as const;
-const IMPLEMENTED_OPERATIONAL_INBOUND_METHODS = new Set([
-  "credential.changed",
-  "bridge.ping",
-  "context.snapshot",
-  "context.event",
-  "context.complete",
-  "context.queue_updated",
-  "browser.perform",
-  "browser.cancel",
-  "browser.finalize_turn",
-  "browser.resolve_challenge",
-  "browser.reconcile",
-  "browser.ack_events",
-]);
-
 const runtimeStore = new RuntimeStore();
 const contentHost = new ContentRuntimeHost();
 const debuggerHost = new ChromeScreenshotDebuggerHost();
@@ -264,9 +232,7 @@ async function helloContext(): Promise<NativeHelloContext> {
       storageMigrationState: snapshot.activationEvidence.storageMigrationState,
       chromePermissionsReady: await chromePermissionsReady(),
       legacyControlPlaneInactive: snapshot.activationEvidence.legacyControlPlaneInactive,
-      operationalMethodSurfaceReady: REQUIRED_OPERATIONAL_INBOUND_METHODS.every(
-        (method) => IMPLEMENTED_OPERATIONAL_INBOUND_METHODS.has(method),
-      ),
+      operationalMethodSurfaceReady: operationalInboundSurfaceReady(),
     },
   };
 }
