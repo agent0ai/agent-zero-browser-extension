@@ -14,6 +14,11 @@ const binding: ContentBinding = {
 };
 
 describe("content protocol", () => {
+  it("accepts only a boolean optional internal favicon indication on exact binds", () => {
+    const value = { contract: CONTENT_CONTRACT, kind: "content.bind", binding, deadline_ms: 1_500 };
+    for (const flag of [true, false]) expect(parseContentEnvelope({ ...value, agent_created_favicon: flag }, 1_000).ok).toBe(true);
+    for (const flag of ["true", 1, null, {}]) expect(parseContentEnvelope({ ...value, agent_created_favicon: flag }, 1_000).ok).toBe(false);
+  });
   it("accepts exact document- and lease-bound cursor commands", () => {
     const parsed = parseContentEnvelope(
       {

@@ -271,6 +271,14 @@ product-reference material is not included and is not repository instruction.
 - The page cursor must be non-intercepting, isolated in a shadow root,
   accessibility-hidden, bounded to 600 ms of animation, removable on every
   terminal/loss path, and usable with reduced motion and forced colors.
+  A production worker may request the fixed Agent Zero favicon only on a
+  successful exact content binding for an active agent-created, non-taken-over
+  lease. The optional internal boolean is derived from the worker lease, never
+  caller arguments. Claimed/user tabs remain unchanged. Preserve all original
+  favicon nodes; remove only the owned, unchanged link on cancel, release or
+  navigation. Do not fight site updates or add open-time binding effects. This
+  uses the supplied lightSymbol.svg geometry and may be limited by site CSP or
+  Chrome caching; it is not a configurable protected tab-strip system badge.
 - Remote events may update status/badge state but must never force UI open or
   steal focus. Action, command, and context-menu handlers are user-gesture
   entry points for a tab-specific side panel.

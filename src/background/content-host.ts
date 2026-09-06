@@ -1,4 +1,5 @@
 import contentScriptFile from "../content/index.ts?script&module";
+import { BUILD_CHANNEL } from "../build-channel";
 import {
   CONTENT_CONTRACT,
   type ContentBindEnvelope,
@@ -253,6 +254,8 @@ export class ContentRuntimeHost {
       kind: "content.bind",
       binding,
       deadline_ms: deadlineAtMs,
+      agent_created_favicon: !BUILD_CHANNEL.development && lease.origin === "created"
+        && lease.state === "active" && !lease.userIntervened,
     };
     const response: unknown = await chrome.tabs.sendMessage(tab.id, envelope, { documentId });
     assertAuthority();

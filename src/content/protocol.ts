@@ -17,6 +17,7 @@ export type ContentBindEnvelope = {
   kind: "content.bind";
   binding: ContentBinding;
   deadline_ms: number;
+  agent_created_favicon?: boolean;
 };
 
 export type ContentCommand =
@@ -291,10 +292,11 @@ export const parseContentEnvelope = (
   if (!isRecord(value) || value.contract !== CONTENT_CONTRACT) return { ok: false, code: "INVALID_ENVELOPE" };
 
   if (value.kind === "content.bind") {
-    if (!hasExactKeys(value, ["contract", "kind", "binding", "deadline_ms"])) {
+    if (!hasExactKeys(value, ["contract", "kind", "binding", "deadline_ms"], ["agent_created_favicon"])) {
       return { ok: false, code: "INVALID_ENVELOPE" };
     }
-    if (!isContentBinding(value.binding) || !isDeadline(value.deadline_ms, nowMs)) {
+    if (!isContentBinding(value.binding) || !isDeadline(value.deadline_ms, nowMs)
+      || (value.agent_created_favicon !== undefined && typeof value.agent_created_favicon !== "boolean")) {
       return { ok: false, code: "INVALID_ENVELOPE" };
     }
     if (value.deadline_ms < nowMs) {

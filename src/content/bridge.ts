@@ -1,5 +1,6 @@
 import { CursorController, CursorMoveInterruptedError } from "./cursor";
 import { createCursorOverlay } from "./overlay";
+import { createOwnedFavicon } from "./favicon";
 import {
   CONTENT_CONTRACT,
   bindingFromCommand,
@@ -86,6 +87,7 @@ export type ContentRuntimeDependencies = {
   now?: () => number;
   viewport?: () => { width: number; height: number };
   emitArrival?: (event: CursorArrivedEvent) => void | Promise<void>;
+  createFavicon?: () => { remove(): void } | null;
 };
 
 const rejected = (code: ContentErrorCode, message: string): ContentRejectedResponse => ({
@@ -131,6 +133,7 @@ export class ContentRuntime {
   private binding: ContentBinding | null = null;
   private references: ElementReferenceRegistry | null = null;
   private released = false;
+  private favicon: { remove(): void } | null = null;
   private readonly arrivedActions = new Set<string>();
   private readonly activatedActions = new Set<string>();
   private readonly now: () => number;
@@ -181,6 +184,17 @@ export class ContentRuntime {
           parsed.envelope.binding.document_epoch,
           this.dependencies.ownerDocument,
         );
+      }
+      if (parsed.envelope.agent_created_favicon === true && !this.favicon) {
+        try {
+          this.favicon = this.dependencies.createFavicon
+            ? this.dependencies.createFavicon()
+            : createOwnedFavicon(this.dependencies.ownerDocument);
+        } catch {
+          // Cosmetic favicon support must never change browser-operation success.
+        }
+      } else if (parsed.envelope.agent_created_favicon !== true) {
+        this.removeFavicon();
       }
       return {
         contract: CONTENT_CONTRACT,
@@ -405,6 +419,7 @@ export class ContentRuntime {
       }
       case "cursor.cancel":
         this.dependencies.cursor.teardown();
+        this.removeFavicon();
         return commandResult(envelope, { state: "cancelled" });
       case "runtime.release":
         this.release();
@@ -742,10 +757,16 @@ export class ContentRuntime {
     }
   }
 
+  private removeFavicon(): void {
+    this.favicon?.remove();
+    this.favicon = null;
+  }
+
   private release(): void {
     if (this.released) return;
     this.released = true;
     this.dependencies.cursor.teardown();
+    this.removeFavicon();
     this.references?.invalidate();
     this.references = null;
   }
