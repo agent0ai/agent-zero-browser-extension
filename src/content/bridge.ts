@@ -134,6 +134,7 @@ export class ContentRuntime {
   private references: ElementReferenceRegistry | null = null;
   private released = false;
   private favicon: { remove(): void } | null = null;
+  private suspendedCursor: { operationId: string; actionId: string; epoch: number | null } | null = null;
   private readonly arrivedActions = new Set<string>();
   private readonly activatedActions = new Set<string>();
   private readonly now: () => number;
@@ -417,7 +418,20 @@ export class ContentRuntime {
         const point = this.dependencies.cursor.freeze();
         return commandResult(envelope, { state: "frozen", ...(point ?? {}) });
       }
+      case "cursor.suspend":
+        this.suspendedCursor = { operationId: envelope.operation_id, actionId: envelope.action_id,
+          epoch: this.dependencies.cursor.suspend() };
+        return commandResult(envelope, { state: "suspended" });
+      case "cursor.resume": {
+        const suspended = this.suspendedCursor;
+        if (suspended?.operationId === envelope.operation_id && suspended.actionId === envelope.action_id) {
+          this.suspendedCursor = null;
+          this.dependencies.cursor.resume(suspended.epoch);
+        }
+        return commandResult(envelope, { state: "resumed" });
+      }
       case "cursor.cancel":
+        this.suspendedCursor = null;
         this.dependencies.cursor.teardown();
         this.removeFavicon();
         return commandResult(envelope, { state: "cancelled" });
@@ -765,6 +779,7 @@ export class ContentRuntime {
   private release(): void {
     if (this.released) return;
     this.released = true;
+    this.suspendedCursor = null;
     this.dependencies.cursor.teardown();
     this.removeFavicon();
     this.references?.invalidate();

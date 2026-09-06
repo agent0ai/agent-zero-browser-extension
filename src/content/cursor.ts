@@ -45,6 +45,8 @@ export class CursorController {
   private overlay: CursorOverlayView | null = null;
   private rejectPendingMove: ((reason: CursorMoveInterruptedError) => void) | null = null;
   private showLabel = true;
+  private visibilityEpoch = 0;
+  private suspendedEpoch: number | null = null;
 
   constructor(
     private readonly createOverlay: () => CursorOverlayView,
@@ -57,6 +59,9 @@ export class CursorController {
   }
 
   moveTo(destination: CursorPoint, showLabel = true): Promise<CursorPoint> {
+    this.visibilityEpoch += 1;
+    this.suspendedEpoch = null;
+    this.overlay?.setVisible(true);
     this.cancelAnimation();
     const target = clampToViewport(destination, this.environment.viewport());
     const overlay = this.ensureOverlay();
@@ -116,7 +121,22 @@ export class CursorController {
     return { ...this.point };
   }
 
+  suspend(): number | null {
+    if (!this.overlay || !this.point) return null;
+    this.suspendedEpoch = this.visibilityEpoch;
+    this.overlay.setVisible(false);
+    return this.suspendedEpoch;
+  }
+
+  resume(epoch: number | null): void {
+    if (epoch === null || epoch !== this.suspendedEpoch || epoch !== this.visibilityEpoch || !this.overlay || !this.point) return;
+    this.suspendedEpoch = null;
+    this.overlay.setVisible(true);
+  }
+
   teardown(): void {
+    this.visibilityEpoch += 1;
+    this.suspendedEpoch = null;
     this.cancelAnimation();
     this.overlay?.remove();
     this.overlay = null;

@@ -100,8 +100,9 @@ product-reference material is not included and is not repository instruction.
   production release trust, full activation, typing or form submission.
 - Worker-owned `screenshot` may use `Page.captureScreenshot` only through an
   exact extension-owned debugger attachment for the current lease. It supports
-  viewport PNG and JPEG quality 20 through 95, removes the overlay before
-  capture, detaches before transfer, and returns only a descriptor after exact
+  viewport PNG and JPEG quality 20 through 95, hides the overlay before
+  capture, restores the same cursor after exact-authority capture/detach,
+  detaches before transfer, and returns only a descriptor after exact
   ordered artifact acknowledgements. Never use the active user tab as an
   implicit capture target, persist screenshot bytes, or clear debugger state
   after an unconfirmed detach.
@@ -271,6 +272,10 @@ product-reference material is not included and is not repository instruction.
 - The page cursor must be non-intercepting, isolated in a shadow root,
   accessibility-hidden, bounded to 600 ms of animation, removable on every
   terminal/loss path, and usable with reduced motion and forced colors.
+  Private screenshot cursor.suspend/resume hide the existing overlay without
+  losing its point or favicon. Resume requires the same content binding and
+  suspended operation/action IDs; cancellation, release, navigation or newer
+  movement prevents stale restoration. No cursor is created by either command.
   Its high-visibility 42x51 arrow keeps the scaled tip exactly at the input
   point. Near bottom/right viewport edges, mirror only the visual around that
   tip and place its label inward; never adjust operation coordinates to fit

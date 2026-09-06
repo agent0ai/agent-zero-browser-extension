@@ -1,6 +1,7 @@
 export type CursorVisualState = "activated" | "frozen" | "targeting" | "travelling";
 
 export interface CursorOverlayView {
+  setVisible(visible: boolean): void;
   setPosition(x: number, y: number): void;
   setState(state: CursorVisualState, showLabel: boolean, reducedMotion: boolean): void;
   remove(): void;
@@ -168,6 +169,10 @@ export const createCursorOverlay = (ownerDocument: Document = document): CursorO
 
   let removed = false;
   return {
+    setVisible(visible) {
+      if (removed) return;
+      viewport.style.setProperty("display", visible ? "block" : "none", "important");
+    },
     setPosition(x, y) {
       if (removed) return;
       viewport.style.setProperty("--a0-cursor-x", `${x}px`, "important");
