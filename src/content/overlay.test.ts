@@ -79,13 +79,16 @@ describe("cursor overlay", () => {
     expect(pointer.attributes.get("focusable")).toBe("false");
     expect(pointer.children[0].attributes.get("d")).toBe("M3 3 L3 26 L9.5 20.5 L14 31 L19 28.5 L14.5 18 L23 17 Z");
     expect(pointer.children[0].attributes.get("aria-hidden")).toBe("true");
-    expect(OVERLAY_CSS).toContain("transform: translate3d(-4.5px, -4.5px, 0)");
-    expect(OVERLAY_CSS).toContain("transform-origin: 4.5px 4.5px");
+    expect(OVERLAY_CSS).toContain("width: 28px !important");
+    expect(OVERLAY_CSS).toContain("height: 34px !important");
+    expect(OVERLAY_CSS).toContain("transform: translate3d(-3px, -3px, 0)");
+    expect(OVERLAY_CSS).toContain("transform-origin: 3px 3px");
     expect(OVERLAY_CSS).toContain("drop-shadow(0 0 11px #4285f4)");
-    expect(viewport.children[1].children[1].textContent).toBe("Agent Zero");
+    expect(viewport.children[1].children).toHaveLength(1);
+    expect(OVERLAY_CSS).not.toContain(".label");
     view.setState("activated", true, true);
     expect(viewport.dataset).toMatchObject({ state: "activated", reducedMotion: "true" });
-    expect(viewport.children[1].children[1].hidden).toBe(false);
+    expect(viewport.children[1].children).toHaveLength(1);
     view.remove();
     expect(host.removed).toBe(true);
     view.setPosition(100, 100);
@@ -94,7 +97,7 @@ describe("cursor overlay", () => {
     expect(viewport.style.values.get("--a0-cursor-x")?.value).toBe("45px");
   });
 
-  it("keeps the tip fixed while turning the pointer and label inward at page edges", () => {
+  it("keeps the tip fixed while turning the compact pointer inward at page edges", () => {
     const document = new FakeDocument();
     const view = createCursorOverlay(document as unknown as Document);
     const viewport = document.documentElement.children[0].shadow!.children[1];
@@ -103,8 +106,6 @@ describe("cursor overlay", () => {
     expect(viewport.style.values.get("--a0-cursor-y")?.value).toBe("692px");
     expect(viewport.style.values.get("--a0-cursor-flip-x")?.value).toBe("-1");
     expect(viewport.style.values.get("--a0-cursor-flip-y")?.value).toBe("-1");
-    expect(viewport.style.values.get("--a0-cursor-label-x")?.value).toBe("-88px");
-    expect(viewport.style.values.get("--a0-cursor-label-y")?.value).toBe("-24px");
     view.setPosition(200, 200);
     expect(viewport.style.values.get("--a0-cursor-flip-x")?.value).toBe("1");
     expect(viewport.style.values.get("--a0-cursor-flip-y")?.value).toBe("1");
