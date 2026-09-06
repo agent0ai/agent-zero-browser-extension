@@ -37,38 +37,39 @@ export const OVERLAY_CSS = `
   position: absolute !important;
   top: var(--a0-cursor-y, -100px) !important;
   left: var(--a0-cursor-x, -100px) !important;
-  width: 18px !important;
-  height: 18px !important;
-  border: 2px solid #fff !important;
-  border-radius: 999px !important;
-  background: #2b5ab9 !important;
-  box-shadow: 0 0 0 1px #000, 0 0 0 7px rgba(43, 90, 185, .2) !important;
-  transform: translate3d(-50%, -50%, 0) !important;
+  width: 28px !important;
+  height: 34px !important;
+  transform: translate3d(-3px, -3px, 0) !important;
 }
-.cursor::after {
-  content: "" !important;
-  position: absolute !important;
-  inset: 4px !important;
-  border-radius: inherit !important;
-  background: #fff !important;
-  outline: 1px solid #000 !important;
+.pointer {
+  display: block !important;
+  width: 28px !important;
+  height: 34px !important;
+  overflow: visible !important;
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, .55)) drop-shadow(0 0 5px rgba(66, 133, 244, .9)) !important;
+}
+.pointer path {
+  fill: #151b26 !important;
+  stroke: #fff !important;
+  stroke-width: 1.75px !important;
+  stroke-linejoin: round !important;
 }
 .ring {
   position: absolute !important;
   top: var(--a0-cursor-y, -100px) !important;
   left: var(--a0-cursor-x, -100px) !important;
-  width: 38px !important;
-  height: 38px !important;
-  border: 2px solid #fff !important;
+  width: 30px !important;
+  height: 30px !important;
+  border: 1.5px solid #76a7fa !important;
   border-radius: 999px !important;
-  outline: 1px solid #000 !important;
-  opacity: 0 !important;
-  transform: translate3d(-50%, -50%, 0) scale(.72) !important;
+  box-shadow: 0 0 5px rgba(66, 133, 244, .45) !important;
+  opacity: 0;
+  transform: translate3d(-50%, -50%, 0) scale(.72);
 }
 .label {
   position: absolute !important;
-  inset-block-start: 14px !important;
-  inset-inline-start: 14px !important;
+  inset-block-start: 20px !important;
+  inset-inline-start: 26px !important;
   min-width: 25px !important;
   padding: 3px 6px !important;
   border: 1px solid #fff !important;
@@ -82,14 +83,18 @@ export const OVERLAY_CSS = `
 }
 .viewport[data-state="targeting"] .ring,
 .viewport[data-state="frozen"] .ring {
-  opacity: 1 !important;
+  opacity: .65 !important;
 }
 .viewport[data-state="activated"] .ring {
   animation: a0-cursor-activate 280ms ease-out 1 !important;
 }
 @keyframes a0-cursor-activate {
-  0% { opacity: 1; transform: translate3d(-50%, -50%, 0) scale(.72); }
+  0% { opacity: .75; transform: translate3d(-50%, -50%, 0) scale(.72); }
   100% { opacity: 0; transform: translate3d(-50%, -50%, 0) scale(1.18); }
+}
+.viewport[data-reduced-motion="true"][data-state="activated"] .ring {
+  animation: none !important;
+  opacity: .65 !important;
 }
 @media (prefers-reduced-motion: reduce) {
   .viewport[data-state="activated"] .ring {
@@ -98,19 +103,19 @@ export const OVERLAY_CSS = `
   }
 }
 @media (forced-colors: active) {
-  .cursor, .ring, .label {
+  .pointer, .ring, .label {
     forced-color-adjust: none !important;
     border-color: CanvasText !important;
     outline: 2px solid Highlight !important;
     box-shadow: none !important;
   }
-  .cursor { background: Highlight !important; }
-  .cursor::after { background: CanvasText !important; outline-color: Canvas !important; }
+  .pointer { filter: none !important; outline: none !important; }
+  .pointer path { fill: CanvasText !important; stroke: Canvas !important; }
   .label { background: Canvas !important; color: CanvasText !important; }
 }
 `;
 
-const hideFromAccessibility = (element: HTMLElement): void => {
+const hideFromAccessibility = (element: Element): void => {
   element.setAttribute("aria-hidden", "true");
   element.setAttribute("inert", "");
 };
@@ -136,13 +141,24 @@ export const createCursorOverlay = (ownerDocument: Document = document): CursorO
   cursor.className = "cursor";
   hideFromAccessibility(cursor);
 
+  const pointer = ownerDocument.createElementNS("http://www.w3.org/2000/svg", "svg");
+  pointer.setAttribute("class", "pointer");
+  pointer.setAttribute("viewBox", "0 0 28 34");
+  pointer.setAttribute("focusable", "false");
+  hideFromAccessibility(pointer);
+  const arrow = ownerDocument.createElementNS("http://www.w3.org/2000/svg", "path");
+  // The tip at (3, 3) cancels the cursor's (-3px, -3px) offset exactly.
+  arrow.setAttribute("d", "M3 3 L3 26 L9.5 20.5 L14 31 L19 28.5 L14.5 18 L23 17 Z");
+  hideFromAccessibility(arrow);
+  pointer.append(arrow);
+
   const label = ownerDocument.createElement("span");
   label.className = "label";
   label.textContent = "A0";
   label.hidden = true;
   hideFromAccessibility(label);
 
-  cursor.append(label);
+  cursor.append(pointer, label);
   viewport.append(ring, cursor);
   shadow.append(style, viewport);
   (ownerDocument.documentElement || ownerDocument.body).append(host);
