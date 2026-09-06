@@ -34,7 +34,7 @@ const commandEnvelope = (command: ContentCommand, overrides: Record<string, unkn
   ...overrides,
 });
 
-const makeRuntime = () => {
+const makeRuntime = (createFavicon?: () => { remove(): void } | null) => {
   const states: CursorVisualState[] = [];
   const positions: Array<{ x: number; y: number }> = [];
   let removals = 0;
@@ -61,6 +61,7 @@ const makeRuntime = () => {
     extensionOrigin,
     ownerDocument,
     cursor,
+    createFavicon,
     now: () => 1_000,
     viewport: () => ({ width: 800, height: 600 }),
     emitArrival: (event) => {
@@ -71,6 +72,29 @@ const makeRuntime = () => {
 };
 
 describe("ContentRuntime", () => {
+  it.each(["cancel", "navigation", "release"])("shows no favicon before authenticated created-tab binding and removes it on %s", async (terminal) => {
+    const remove = vi.fn();
+    const create = vi.fn(() => ({ remove }));
+    const { runtime, positions } = makeRuntime(create);
+    const indicated = { ...bindEnvelope(), agent_created_favicon: true };
+    await runtime.handle(indicated, { id: "untrusted" });
+    expect(create).not.toHaveBeenCalled();
+    await runtime.handle(bindEnvelope(), sender);
+    expect(create).not.toHaveBeenCalled();
+    await runtime.handle({ ...indicated, binding: { ...binding, lease_id: "other" } }, sender);
+    expect(create).not.toHaveBeenCalled();
+    await runtime.handle(indicated, sender);
+    await runtime.handle(indicated, sender);
+    expect(create).toHaveBeenCalledTimes(1);
+    expect(positions).toEqual([]);
+    if (terminal === "navigation") runtime.handleNavigation();
+    else await runtime.handle(commandEnvelope(terminal === "cancel"
+      ? { name: "cursor.cancel", reason: "disconnect" }
+      : { name: "runtime.release", reason: "finalize" }), sender);
+    expect(remove).toHaveBeenCalledTimes(1);
+    runtime.handleNavigation();
+    expect(remove).toHaveBeenCalledTimes(1);
+  });
   it("rejects callers other than its own service worker", async () => {
     const { runtime } = makeRuntime();
     const response = await runtime.handle(bindEnvelope(), {

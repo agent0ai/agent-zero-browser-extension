@@ -107,6 +107,7 @@ describe("content runtime host document binding", () => {
     expect(sendMessage).toHaveBeenCalledWith(
       7,
       expect.objectContaining({
+        agent_created_favicon: true,
         binding: expect.objectContaining({
           lease_id: lease.leaseId,
           tab_handle: lease.tabHandle,
@@ -121,6 +122,13 @@ describe("content runtime host document binding", () => {
       args: [expect.any(String)],
       world: "ISOLATED",
     }));
+  });
+
+  it("never requests an ownership favicon for a claimed user tab", async () => {
+    const lease = leaseFixture();
+    lease.origin = "claimed";
+    await new ContentRuntimeHost().bind(lease);
+    expect(sendMessage.mock.calls[0][1].agent_created_favicon).toBe(false);
   });
 
   function deferInstallation() {
