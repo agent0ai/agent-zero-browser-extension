@@ -210,6 +210,33 @@ product-reference material is not included and is not repository instruction.
   hidden. The bounded auto-growing composer and independently scrolling message
   area must fit narrow panels without horizontal overflow. This presentation
   changes no context selection, tab ownership, sharing, or approval authority.
+  A global side-panel viewer uses a stable browser-profile presentation anchor,
+  not a new document ID on each open. The worker retains bounded per-anchor/chat
+  unsent user drafts across viewer closure; these are never auto-sent, logged,
+  written to disk or included in native RPC. Clear only the exact accepted send
+  version; later edits and unconfirmed sends stay intact. Drafts and selection
+  remain connection-scoped and are cleared on native identity/connection reset,
+  not panel close. This is not browser-restart durability. A visible mounted
+  panel refreshes the authorized WebUI chat list every 15 seconds and on focus,
+  with no overlapping refresh or work while sending/switching. Existing protocol
+  limits (64 advertised contexts) remain; refreshing never selects a new chat or
+  grants access. Closing the viewer removes its timer and presentation reference
+  only; it never cancels agent work or disconnects the companion.
+  The explicit @ picker lists at most 200 non-incognito HTTP(S) tabs only after
+  the user asks. Provider tab IDs stay inside the worker behind expiring,
+  panel/context/connection-bound choices. Re-read the selected tab and reject
+  changed URL/title, pending navigation, expiry or lost selection. Adding a tab
+  inserts an editable Markdown title/link reference into the user's draft;
+  only Send shares that text. The picker warns that full links can contain
+  private information. It does not attach DOM/page contents, claim a lease,
+  grant site/action permission, or mutate/close the user's tab. No tab metadata
+  goes to disk, logs, or automatic network requests.
+  Viewer ports require an extension-page sender, not merely the extension ID
+  that content-script senders also carry. Content scripts cannot open a viewer
+  session to enumerate chats/tabs or access drafts.
+  Chat text uses a bounded inert Markdown subset: formatting never executes
+  HTML or fetches images/resources. Only explicit HTTP(S) links are clickable;
+  parser budget exhaustion preserves the remaining text as plain text.
   Native-port disconnect callbacks synchronously consume Chrome's lastError
   even for obsolete or intentionally closed ports; generation checks still
   prevent those callbacks from changing replacement/user-disconnected/blocked

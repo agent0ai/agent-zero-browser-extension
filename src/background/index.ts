@@ -21,6 +21,7 @@ import { buildBrowserReconcileResult, parseBrowserReconcileRequest } from "../pr
 import { RuntimeStore, type StagedTabCandidate } from "./runtime-store";
 import { createUiRouter } from "./ui-router";
 import { ContextRelay, ContextRelayError } from "./context-relay";
+import { TabMentions } from "./tab-mentions";
 import { CriticalEventRelay } from "./critical-events";
 import { ChromeScreenshotDebuggerHost } from "./debugger-host";
 import type {
@@ -73,6 +74,7 @@ type PanelPortRecord = {
 };
 
 const panelPorts = new Map<chrome.runtime.Port, PanelPortRecord>();
+const tabMentions = new TabMentions({ query: () => chrome.tabs.query({}), get: id => chrome.tabs.get(id) });
 
 let bootPromise: Promise<void> | null = null;
 const nativeLifecycle = new NativeLifecycleQueue(() => nativePort.state);
@@ -345,6 +347,7 @@ const nativePort = new NativePortController(
     // Revoke stream delivery synchronously, before any queued storage work.
     if (snapshot.state !== "ready" || snapshot.activationReady !== true) {
       contextRelay.deactivate();
+      tabMentions.clear();
     }
     if (!browserConnectionAuthorityKey(snapshot)) {
       criticalEventRelay.deactivate();
@@ -453,6 +456,20 @@ const routeUiRequest = createUiRouter({
     if (result.status === "pending" && action === "rotate") nativePort.disconnect("credential_rotation_pending");
     if (result.status === "revoked") nativePort.disconnect("credential_revoked");
     return result;
+  },
+  tabMentions: async (panelId, contextId, choiceId) => {
+    requireContextUiReady();
+    const connection = contextRelay.requireSelected(panelId, contextId);
+    const scope = JSON.stringify([connection, panelId, contextId]);
+    const current = () => {
+      try { requireContextUiReady(); return contextRelay.requireSelected(panelId, contextId) === connection; }
+      catch { return false; }
+    };
+    return choiceId === undefined ? await tabMentions.list(scope, current) : await tabMentions.select(scope, choiceId, current);
+  },
+  saveDraft: (panelId, contextId, text) => {
+    requireContextUiReady();
+    contextRelay.saveDraft(panelId, contextId, text);
   },
   contextList: async (panelId) => {
     requireContextUiReady();
@@ -627,6 +644,7 @@ async function handleNativeState(connection: NativeConnectionSnapshot, guard: Na
     || runtimeStore.snapshot.lifecycle.phase !== "READY"
   ) {
     contextRelay.deactivate();
+    tabMentions.clear();
   }
   if (!browserRuntimeReady()) {
     criticalEventRelay.deactivate();
@@ -754,14 +772,14 @@ chrome.alarms.onAlarm.addListener((alarm) => {
 chrome.runtime.onConnect.addListener((port) => {
   void ensureBooted().then(() => {
     if (port.name !== SIDE_PANEL_PORT && port.name !== "agent-zero-sidepanel") return;
-    if (port.sender?.id !== chrome.runtime.id) return;
+    if (!port.sender || !validExtensionPageSender(port.sender)) return;
     const panelId = `panel:${crypto.randomUUID()}`;
     const anchorOrigin = safeHttpOrigin(port.sender?.tab?.url);
     const panel: PanelPortRecord = {
       panelId,
       anchorKey: typeof port.sender?.tab?.id === "number"
         ? `tab:${port.sender.tab.id}`
-        : `document:${port.sender?.documentId ?? panelId}`,
+        : "browser-profile",
       anchorOrigin,
     };
     panelPorts.set(port, panel);

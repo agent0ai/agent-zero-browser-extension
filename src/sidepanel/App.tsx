@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "preact/hooks";
 import { BUILD_CHANNEL } from "../build-channel";
 import { AgentZeroLogo } from "../ui/AgentZeroLogo";
+import type { TabMentionChoice } from "../background/tab-mentions";
+import { Markdown } from "./Markdown";
 
 import { connectSidePanelPort, sendSidePanelRequest } from "../lib/extension";
 import {
@@ -27,7 +29,7 @@ type AuthorityFence = {
 
 export function App() {
   const [runtime, setRuntime] = useState<RuntimePresentation>(EMPTY_RUNTIME_PRESENTATION);
-  const [context, setContext] = useState<ContextPresentation>(EMPTY_CONTEXT_PRESENTATION);
+  const [context, setContextState] = useState<ContextPresentation>(EMPTY_CONTEXT_PRESENTATION);
   const [portConnected, setPortConnected] = useState(false);
   const [contextBusy, setContextBusy] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -35,10 +37,77 @@ export function App() {
   const [sending, setSending] = useState(false);
   const [notice, setNotice] = useState("");
   const [pendingAction, setPendingAction] = useState("");
+  const [tabPicker, setTabPicker] = useState(false);
+  const [tabChoices, setTabChoices] = useState<TabMentionChoice[]>([]);
+  const [tabSearch, setTabSearch] = useState("");
+  const [tabsBusy, setTabsBusy] = useState(false);
   const portRef = useRef<chrome.runtime.Port | null>(null);
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
   const loadedConnectionRef = useRef("");
+  const draftContextRef = useRef<string | null>(null);
+  const draftRevisionRef = useRef(0);
+  const listingRef = useRef(false);
   const authorityRef = useRef({ epoch: 0, connectionId: "", loadGenerationId: "" });
+
+  const setContext = (next: ContextPresentation) => {
+    if (draftContextRef.current !== next.selectedContextId) {
+      draftContextRef.current = next.selectedContextId;
+      setDraft(next.draft ?? "");
+      setTabPicker(false);
+      setTabChoices([]);
+    }
+    setContextState(next);
+  };
+
+  const updateDraft = (text: string) => {
+    draftRevisionRef.current += 1;
+    setDraft(text);
+    const port = portRef.current;
+    const contextId = draftContextRef.current;
+    if (!port || !contextId) return;
+    const fence = captureAuthority(port);
+    void sendSidePanelRequest(port, { type: "context_draft", context_id: contextId, text })
+      .catch(() => {
+        if (authorityIsCurrent(fence)) setNotice("Your draft could not be kept for reopening. Copy it before closing this panel.");
+      });
+  };
+
+  const openTabPicker = async () => {
+    const port = portRef.current;
+    const contextId = draftContextRef.current;
+    if (!port || !contextId || !runtime.ready || contextBusy || sending || tabsBusy) return;
+    const fence = captureAuthority(port);
+    setTabPicker(true);
+    setTabsBusy(true);
+    setTabChoices([]);
+    setTabSearch("");
+    try {
+      const response = await sendSidePanelRequest<{ ok: true; result: TabMentionChoice[] }>(port, { type: "tab_mention_list", context_id: contextId });
+      if (authorityIsCurrent(fence) && draftContextRef.current === contextId) setTabChoices(response.result);
+    } catch {
+      if (authorityIsCurrent(fence)) setNotice("Open tabs could not be listed. Try the @ button again.");
+    } finally { if (authorityIsCurrent(fence)) setTabsBusy(false); }
+  };
+
+  const attachTab = async (id: string) => {
+    const port = portRef.current;
+    const contextId = draftContextRef.current;
+    if (!port || !contextId || tabsBusy) return;
+    const fence = captureAuthority(port);
+    setTabsBusy(true);
+    try {
+      const response = await sendSidePanelRequest<{ ok: true; result: string }>(port, { type: "tab_mention_select", context_id: contextId, choice_id: id });
+      if (!authorityIsCurrent(fence) || draftContextRef.current !== contextId) return;
+      // The user previews and can edit/remove the reference before choosing Send.
+      const currentText = composerRef.current?.value ?? draft;
+      updateDraft(`${currentText.replace(/(^|\s)@$/, "$1").trimEnd()}${currentText.trim() && currentText.trim() !== "@" ? "\n\n" : ""}${response.result}`);
+      setTabPicker(false);
+      setTabChoices([]);
+      composerRef.current?.focus();
+    } catch {
+      if (authorityIsCurrent(fence)) setNotice("That tab changed or the picker expired. Reopen @ and choose it again.");
+    } finally { if (authorityIsCurrent(fence)) setTabsBusy(false); }
+  };
 
   useEffect(() => {
     const resize = () => {
@@ -135,7 +204,8 @@ export function App() {
 
   const refresh = async () => {
     const port = portRef.current;
-    if (!port) return;
+    if (!port || listingRef.current) return;
+    listingRef.current = true;
     const fence = captureAuthority(port);
     setRefreshing(true);
     setNotice("");
@@ -154,9 +224,25 @@ export function App() {
       if (!authorityIsCurrent(fence)) return;
       setNotice("Could not refresh chats right now.");
     } finally {
+      listingRef.current = false;
       if (authorityIsCurrent(fence)) setRefreshing(false);
     }
   };
+
+  useEffect(() => {
+    if (!runtime.ready) return;
+    const checkChats = () => {
+      if (!document.hidden && !contextBusy && !sending && !pendingAction) void refresh();
+    };
+    const timer = window.setInterval(checkChats, 15_000);
+    window.addEventListener("focus", checkChats);
+    document.addEventListener("visibilitychange", checkChats);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", checkChats);
+      document.removeEventListener("visibilitychange", checkChats);
+    };
+  }, [runtime.ready, contextBusy, sending, pendingAction]);
 
   const selectContext = async (contextId: string) => {
     const port = portRef.current;
@@ -210,6 +296,7 @@ export function App() {
     const port = portRef.current;
     const selected = context.selected;
     const text = draft;
+    const draftRevision = draftRevisionRef.current;
     if (
       !port
       || !runtime.ready
@@ -233,7 +320,7 @@ export function App() {
         },
       }, 120_000);
       if (!authorityIsCurrent(fence)) return;
-      setDraft((current) => current === text ? "" : current);
+      if (draftContextRef.current === selected.summary.contextId && draftRevisionRef.current === draftRevision) setDraft((current) => current === text ? "" : current);
       setNotice(queued ? "Message queued. Agent Zero can pick it up after its current work." : "Update sent to Agent Zero.");
     } catch {
       if (!authorityIsCurrent(fence)) return;
@@ -341,6 +428,16 @@ export function App() {
       </main>
 
       <footer className="panel-footer">
+        {tabPicker && ready && context.selected && <section className="tab-picker" aria-label="Add an open Chrome tab">
+          <div className="card-heading"><strong>Add a tab reference</strong><button type="button" onClick={() => { setTabPicker(false); setTabChoices([]); }}>Cancel</button></div>
+          <p>Only the tab title and full link will be shared when you send. Page contents and tab control are not included. Check links for private information.</p>
+          <input type="search" aria-label="Find an open tab" placeholder="Find an open tab…" value={tabSearch} onInput={event => setTabSearch(event.currentTarget.value)} />
+          <ul>{tabChoices.filter(tab => `${tab.title} ${tab.url}`.toLowerCase().includes(tabSearch.toLowerCase())).map(tab => <li key={tab.id}>
+            <button type="button" disabled={tabsBusy} onClick={() => void attachTab(tab.id)}><strong>{tab.title}</strong><span>{tab.url}</span></button>
+          </li>)}</ul>
+          {tabsBusy && <p role="status">Checking tabs…</p>}
+          {!tabsBusy && tabChoices.length === 0 && <p>No shareable web tabs found. Internal Chrome pages and incognito tabs are excluded.</p>}
+        </section>}
         {ready && context.selected ? (
           <div className="composer">
             <label className="visually-hidden" htmlFor="message-agent-zero">Message Agent Zero</label>
@@ -349,9 +446,15 @@ export function App() {
               ref={composerRef}
               rows={1}
               value={draft}
+              disabled={contextBusy}
               placeholder="Message Agent Zero…"
-              onInput={(event) => setDraft(event.currentTarget.value)}
+              onInput={(event) => {
+                const text = event.currentTarget.value;
+                updateDraft(text);
+                if (/(^|\s)@$/.test(text)) void openTabPicker();
+              }}
               onKeyDown={(event) => {
+                if (event.key === "Escape") { setTabPicker(false); setTabChoices([]); return; }
                 if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
                   event.preventDefault();
                   void send();
@@ -368,11 +471,12 @@ export function App() {
             <button type="button" disabled aria-label="Send message unavailable"><SendIcon /></button>
           </div>
         )}
+        {ready && context.selected && <div className="composer-actions"><button type="button" disabled={contextBusy || sending || tabsBusy} aria-label="Add an open Chrome tab" title="Add a tab reference" onClick={() => void openTabPicker()}>@ Add tab</button></div>}
         {ready && context.selected?.summary.status === "running" && !context.selected.completionStatus && <div className="composer-actions"><button type="button" disabled={!canSend} onClick={() => void send(true)}>Send after current reply</button></div>}
         {draft && utf8ByteLength(draft) > MAX_CONTEXT_MESSAGE_TEXT_BYTES && (
           <p className="composer-error" role="alert">Shorten this update before sending.</p>
         )}
-        <p>Closing this panel does not stop work or close your tabs.</p>
+        <p>Close and reopen to continue. Drafts stay here while connected.</p>
       </footer>
     </div>
   );
@@ -498,7 +602,7 @@ function EventItem({ event }: { event: ContextEvent }) {
     return (
       <li className={`message ${event.data.role === "user" ? "is-user" : "is-assistant"}`}>
         <span>{event.data.role === "user" ? "You" : "Agent Zero"}</span>
-        <p>{event.data.text}</p>
+        <Markdown text={event.data.text} />
       </li>
     );
   }

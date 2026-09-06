@@ -37,6 +37,61 @@ const fixture = () => {
 };
 
 describe("context relay", () => {
+  it("restores a closed viewer's selection and independent chat drafts without sending", async () => {
+    const { relay, transport } = fixture();
+    const other = { ...task, contextId: "chat-two", kind: "chat" as const };
+    vi.mocked(transport.contextList).mockResolvedValue({ contractVersion: 1, contexts: [task, other] });
+    await relay.list("panel-one");
+    await relay.subscribe("panel-one", { contextId: task.contextId });
+    relay.saveDraft("panel-one", task.contextId, "Unfinished first message");
+    await relay.subscribe("panel-one", { contextId: other.contextId });
+    relay.saveDraft("panel-one", other.contextId, "Unfinished second message");
+    await relay.unregisterPanel("panel-one");
+    relay.registerPanel("reopened", "tab:12", () => {});
+    expect((await relay.list("reopened")).suggestedContextId).toBe(other.contextId);
+    expect((await relay.subscribe("reopened", { contextId: other.contextId })).draft).toBe("Unfinished second message");
+    expect((await relay.subscribe("reopened", { contextId: task.contextId })).draft).toBe("Unfinished first message");
+    expect(transport.contextSendMessage).not.toHaveBeenCalled();
+    relay.deactivate();
+    relay.activate("replacement-connection");
+    await relay.list("reopened");
+    expect((await relay.subscribe("reopened", { contextId: task.contextId })).draft).toBe("");
+  });
+
+  it("retains edits made during a send, including identical new text, and failed sends", async () => {
+    const { relay, transport } = fixture();
+    await relay.list("panel-one");
+    await relay.subscribe("panel-one", { contextId: task.contextId });
+    relay.saveDraft("panel-one", task.contextId, "Continue");
+    let complete!: (value: { contextId: string; clientMessageId: string; status: "accepted" }) => void;
+    vi.mocked(transport.contextSendMessage).mockImplementationOnce(() => new Promise(resolve => { complete = resolve; }));
+    const pending = relay.sendMessage("panel-one", { contextId: task.contextId, clientMessageId: "message-one", text: "Continue" });
+    relay.saveDraft("panel-one", task.contextId, "Continue");
+    complete({ contextId: task.contextId, clientMessageId: "message-one", status: "accepted" });
+    await pending;
+    expect(relay.currentView("panel-one").draft).toBe("Continue");
+    vi.mocked(transport.contextSendMessage).mockRejectedValueOnce(new Error("unconfirmed"));
+    await expect(relay.sendMessage("panel-one", { contextId: task.contextId, clientMessageId: "message-two", text: "Continue" })).rejects.toThrow();
+    expect(relay.currentView("panel-one").draft).toBe("Continue");
+    await relay.sendMessage("panel-one", { contextId: task.contextId, clientMessageId: "message-three", text: "Continue" });
+    expect(relay.currentView("panel-one").draft).toBe("");
+  });
+
+  it("discovers newly advertised WebUI chats without resetting the selected chat or draft", async () => {
+    const { relay, transport } = fixture();
+    await relay.list("panel-one");
+    await relay.subscribe("panel-one", { contextId: task.contextId });
+    relay.saveDraft("panel-one", task.contextId, "Keep this draft");
+    vi.mocked(transport.contextList).mockResolvedValue({ contractVersion: 1, contexts: [task, { ...task, contextId: "new-webui-chat", kind: "chat" }] });
+    const view = await relay.list("panel-one");
+    expect(view.contexts.map(item => item.contextId)).toContain("new-webui-chat");
+    expect(view.selectedContextId).toBe(task.contextId);
+    expect(view.draft).toBe("Keep this draft");
+    expect(() => relay.saveDraft("panel-one", "new-webui-chat", "wrong chat")).toThrow();
+    expect(() => relay.saveDraft("panel-one", task.contextId, "x".repeat(100_000))).toThrow();
+    expect(relay.currentView("panel-one").draft).toBe("Keep this draft");
+  });
+
   it("requires advertisement and explicit panel selection before projecting events", async () => {
     const { relay, updates } = fixture();
     await relay.list("panel-one");

@@ -21,6 +21,18 @@ const fixture = () => {
 };
 
 describe("trusted extension UI router", () => {
+  it("keeps unsent drafts local to an exact panel request", async () => {
+    const { dependencies } = fixture();
+    const saveDraft = vi.fn();
+    const route = createUiRouter({ ...dependencies, saveDraft });
+    const request = { type: "context_draft", context_id: "context-one", text: "Unsent text" };
+    await expect(route(request)).rejects.toThrow("INVALID_UI_REQUEST");
+    await expect(route({ ...request, text: {} }, { panelId: "panel-one" })).rejects.toThrow("INVALID_UI_REQUEST");
+    await expect(route({ ...request, send: true }, { panelId: "panel-one" })).rejects.toThrow("INVALID_UI_REQUEST");
+    await expect(route(request, { panelId: "panel-one" })).resolves.toEqual({ ok: true });
+    expect(saveDraft).toHaveBeenCalledExactlyOnceWith("panel-one", "context-one", "Unsent text");
+    expect(dependencies.contextSendMessage).not.toHaveBeenCalled();
+  });
   it("keeps refresh read-only and accepts only parameterless explicit development reconnect", async () => {
     const { dependencies } = fixture();
     const reconnectDevelopmentBrowser = vi.fn(async () => ({ phase: "CONNECTING" }));

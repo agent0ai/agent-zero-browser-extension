@@ -40,6 +40,9 @@ h2 { margin-bottom: 0; font-size: 14px; }
 .message { min-width: 0; }
 .message > span { display: block; margin-bottom: 6px; color: var(--muted); font-size: 11px; font-weight: 500; }
 .message p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; line-height: 1.65; }
+.message .a0-markdown { font-size: 13px; }
+.message .a0-markdown p { margin-bottom: .65em; }
+.message .a0-markdown > :last-child { margin-bottom: 0; }
 .message.is-user { justify-self: end; max-width: 94%; padding: 10px 12px; border-radius: 8px; background: var(--surface-soft); }
 .activity-event { display: flex; align-items: center; gap: 8px; color: var(--muted); }
 .activity-event > span { width: 15px; height: 15px; flex: 0 0 auto; color: var(--accent-text); }
@@ -55,9 +58,19 @@ h2 { margin-bottom: 0; font-size: 14px; }
 .reason-code summary { min-height: 36px; color: var(--muted); cursor: pointer; font-size: 11px; }
 .reason-code code { display: block; overflow-wrap: anywhere; color: var(--muted); font-size: 11px; }
 .panel-footer { min-width: 0; padding: 12px 14px; border-top: 1px solid var(--line); background: var(--bg); }
+.tab-picker { padding: 12px; margin-bottom: 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+.tab-picker > p { margin: 8px 0; color: var(--muted); font-size: 11px; }
+.tab-picker input { width: 100%; min-width: 0; min-height: 40px; padding: 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--text); }
+.tab-picker ul { max-height: min(24dvh, 200px); overflow-y: auto; list-style: none; padding: 0; margin: 8px 0 0; }
+.tab-picker button { min-height: 40px; border: 0; border-radius: 4px; padding: 8px; background: transparent; color: var(--text); cursor: pointer; text-align: left; }
+.tab-picker li button { display: grid; gap: 2px; width: 100%; min-width: 0; }
+.tab-picker li button:hover { background: var(--surface-soft); }
+.tab-picker li strong, .tab-picker li span { overflow-wrap: anywhere; font-size: 12px; }
+.tab-picker li span { color: var(--muted); font-size: 11px; }
 .composer { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 6px 6px 6px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-soft); }
 .composer:focus-within { border-color: var(--focus); }
 .composer textarea { flex: 1 1 0; width: 0; min-width: 0; height: 44px; min-height: 44px; max-height: 132px; margin: 0; padding: 12px 0; resize: none; overflow-y: auto; border: 0; color: var(--text); background: transparent; font-size: 13px; line-height: 20px; }
+.composer textarea:focus-visible { outline: none; } /* The containing composer retains its visible focus border. */
 .composer button { display: grid; place-items: center; width: 36px; height: 36px; flex: 0 0 auto; border: 0; border-radius: 6px; color: #fff; background: var(--accent); cursor: pointer; }
 .composer button:disabled { color: var(--muted); background: var(--surface); cursor: not-allowed; }
 .composer svg { width: 16px; height: 16px; fill: currentColor; }
