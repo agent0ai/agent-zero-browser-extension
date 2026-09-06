@@ -9,7 +9,7 @@ export function createManifest(mode = "production") {
   minimum_chrome_version: "120",
   name: channel.extensionName,
   key: channel.development ? DEVELOPMENT_MANIFEST_KEY : productionIdentity.manifest_public_key,
-  version: "0.1.0",
+  version: "0.1.1",
   description: "Agent Zero side panel and user-visible browser task runtime.",
   permissions: [
     "alarms",

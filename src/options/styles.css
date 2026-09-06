@@ -38,6 +38,8 @@ h2 { margin: 0; font-size: 16px; line-height: 1.4; }
 .installation, .diagnostics { border-bottom: 1px solid var(--line); }
 summary { min-height: 52px; padding: 16px 0; cursor: pointer; font-size: 13px; font-weight: 500; }
 .installation-content { padding: 0 0 20px; max-width: 74ch; }
+.setup-platform { display: grid; gap: 6px; max-width: 340px; margin-bottom: 14px; font-size: 12px; }
+.setup-platform select { min-height: 40px; width: 100%; padding: 8px; color: var(--text); background: var(--surface); border: 1px solid var(--line); border-radius: 6px; }
 .installation-content p { margin: 0 0 10px; color: var(--muted); font-size: 12px; line-height: 1.6; }
 pre { overflow-x: auto; white-space: pre-wrap; overflow-wrap: anywhere; margin: 14px 0; padding: 14px; border: 1px solid var(--line); border-radius: 6px; color: var(--text); background: var(--surface); font-size: 12px; line-height: 1.6; }
 code { font-size: .95em; }

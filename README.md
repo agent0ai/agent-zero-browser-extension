@@ -6,12 +6,23 @@ tab leases, task tab groups, mutation recovery, and dynamically injected page
 helpers. The options page and side panel display pairing/setup state; neither is
 an execution authority.
 
+## Install without the Web Store
+
+Use the supplied unpacked ZIP and open **START-HERE.html** after extracting it.
+No Node, Rust, or source build is needed to load the extension. See the
+[setup guide](docs/INSTALL.md) for macOS, Windows, Linux, and Docker instructions.
+
+The extension folder is cross-platform. The native companion is separate:
+macOS 13+ has a released installer; Windows and Linux production installers are
+still incomplete. Do not mistake an installed extension for working native
+browser control. Pair once and choose it as Agent Zero's default across chats.
+
 ## Development
 
 Repository and coordinated delivery status: [RELEASING.md](RELEASING.md).
-The extension is not a standalone or production-ready install yet. The latest
-live development handshake and reconciliation are confirmed, but full runtime
-capabilities and signed installation remain separate release gates.
+The extension is not a standalone installation. Production-channel control has
+been exercised with the matching macOS companion and Core integration; that
+does not establish Windows/Linux acceptance or Chrome Web Store publication.
 
 ```sh
 npm ci

@@ -1,0 +1,26 @@
+{
+  "guide_url": "https://github.com/TerminallyLazy/agent-zero-browser-support/blob/main/SETUP.md",
+  "platforms": {
+    "macos": {
+      "label": "macOS",
+      "available": true,
+      "requirement": "macOS 13 or later · Apple Silicon and Intel",
+      "description": "Open the disk image, open Agent Zero Browser Setup, and choose Install browser companion. No administrator password is needed. Updates preserve your pairing.",
+      "download_url": "https://raw.githubusercontent.com/TerminallyLazy/agent-zero-browser-releases/native-v2.12.3-macos/v2.12.3/a0-browser-bridge-2.12.3-macos-universal2.dmg"
+    },
+    "windows": {
+      "label": "Windows",
+      "available": false,
+      "requirement": "Native companion installer not released yet",
+      "description": "You can load this Chrome extension on Windows, but browser control needs the Windows companion. Its installer and platform verification are still incomplete. The Mac installer, WSL, and a Docker container cannot replace it.",
+      "download_url": null
+    },
+    "linux": {
+      "label": "Linux",
+      "available": false,
+      "requirement": "Native companion installer not released yet",
+      "description": "You can load this Chrome extension on Linux, but browser control needs a released Linux companion. Current x86-64 and ARM64 builds are candidates, not supported installers. Desktop Secret Service and a conventional Chrome package are required; Snap and Flatpak browser integration is not supported.",
+      "download_url": null
+    }
+  }
+}
