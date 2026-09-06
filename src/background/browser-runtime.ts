@@ -4,6 +4,7 @@ import {
   createTaskGroupIntent,
   observeTabGroupChange,
   planGroupPlacement,
+  removeProviderGroup,
   upsertGroupIntent,
 } from "./groups";
 import {
@@ -1972,6 +1973,20 @@ export class BrowserRuntime {
         revision: lease.revision + 1,
       });
     }
+  }
+
+  async observeTabGroupRemoved(providerWindowId: number, providerGroupId: number): Promise<void> {
+    const generation = this.store.snapshot.lifecycle.loadGenerationId;
+    await this.store.updateSession((session) => {
+      if (this.store.snapshot.lifecycle.loadGenerationId !== generation) return session;
+      let groups = session.groups;
+      for (const intent of Object.values(groups.intentsByBrowserSession)) {
+        if (intent.loadGenerationId !== generation) continue;
+        const next = removeProviderGroup(intent, providerWindowId, providerGroupId);
+        if (next !== intent) groups = upsertGroupIntent(groups, next);
+      }
+      return groups === session.groups ? session : { ...session, groups };
+    });
   }
 
   async observeDebuggerDetached(source: chrome.debugger.Debuggee): Promise<void> {
@@ -3979,8 +3994,8 @@ export class BrowserRuntime {
       });
       if (persistedEvent) this.criticalEvents.publishPersisted(persistedEvent);
 
-      let intent = this.store.snapshot.session.groups.intentsByBrowserSession[request.browserSessionId]
-        || createTaskGroupIntent({
+      const persistedIntent = this.store.snapshot.session.groups.intentsByBrowserSession[request.browserSessionId];
+      let intent = persistedIntent || createTaskGroupIntent({
           intentId: groupIntentId,
           loadGenerationId: snapshot.lifecycle.loadGenerationId,
           browserSessionId: request.browserSessionId,
@@ -3990,6 +4005,34 @@ export class BrowserRuntime {
       if (intent.intentId !== lease.groupIntentId) {
         lease = { ...lease, groupIntentId: intent.intentId, revision: lease.revision + 1 };
       }
+      const cachedGroup = intent.providerGroupsByWindow[String(tab.windowId)];
+      if (cachedGroup) {
+        // An empty Chrome group disappears when its last tab closes. A missed
+        // removal event must not turn the next open into a stale-ID mutation.
+        // Only a successful query proves absence; read failures still abort.
+        const observedGroups = await chrome.tabGroups.query({ windowId: tab.windowId });
+        this.assertCapturedAuthority(request);
+        const currentIntent = this.store.snapshot.session.groups.intentsByBrowserSession[request.browserSessionId];
+        if (!currentIntent || currentIntent.intentId !== intent.intentId
+          || currentIntent.loadGenerationId !== snapshot.lifecycle.loadGenerationId) {
+          throw new NativeRequestError("The task group changed during verification.", "LEASE_CONFLICT");
+        }
+        const currentGroup = currentIntent.providerGroupsByWindow[String(tab.windowId)];
+        if (currentGroup && currentGroup.providerGroupId !== cachedGroup.providerGroupId) {
+          throw new NativeRequestError("The task group changed during verification.", "LEASE_CONFLICT");
+        }
+        if (currentGroup && !observedGroups.some((group) => group.id === cachedGroup.providerGroupId
+          && group.windowId === tab.windowId)) {
+          await this.observeTabGroupRemoved(tab.windowId, cachedGroup.providerGroupId);
+          this.assertCapturedAuthority(request);
+        }
+        intent = this.store.snapshot.session.groups.intentsByBrowserSession[request.browserSessionId];
+        if (!intent || intent.intentId !== lease.groupIntentId
+          || intent.loadGenerationId !== snapshot.lifecycle.loadGenerationId) {
+          throw new NativeRequestError("The task group changed during verification.", "LEASE_CONFLICT");
+        }
+      }
+      const placementIntentRevision = intent.revision;
       const placement = planGroupPlacement(lease, intent);
       if (placement.action === "create_and_join" || placement.action === "join_existing") {
         lease = beginCorrelatedGroupMove(lease, request.actionId, {
@@ -3998,15 +4041,21 @@ export class BrowserRuntime {
         });
         await this.persistLease(lease);
         this.assertCapturedAuthority(request);
+        const latestIntent = this.store.snapshot.session.groups.intentsByBrowserSession[request.browserSessionId];
+        if ((persistedIntent && !latestIntent)
+          || (latestIntent && (latestIntent.intentId !== intent.intentId || latestIntent.revision !== intent.revision))) {
+          throw new NativeRequestError("The task group changed before grouping.", "LEASE_CONFLICT");
+        }
         const providerGroupId = await chrome.tabs.group({
           tabIds: tab.id,
           ...(placement.action === "join_existing"
             ? { groupId: placement.providerGroupId }
             : { createProperties: { windowId: placement.providerWindowId } }),
         });
+        this.assertCapturedAuthority(request);
         if (placement.action === "create_and_join") {
-          this.assertCapturedAuthority(request);
           await chrome.tabGroups.update(providerGroupId, { title: placement.title, color: placement.color });
+          this.assertCapturedAuthority(request);
         }
         const bound = bindProviderGroup(intent, tab.windowId, providerGroupId);
         if (!bound.ok) throw new NativeRequestError("The task group identity conflicted.", "INVALID_STATE");
@@ -4016,7 +4065,17 @@ export class BrowserRuntime {
           providerGroupId,
           correlatedActionId: request.actionId,
         });
-        await this.store.updateSession((session) => ({ ...session, groups: upsertGroupIntent(session.groups, intent) }));
+        await this.store.updateSession((session) => {
+          this.assertCapturedAuthority(request);
+          const currentIntent = session.groups.intentsByBrowserSession[request.browserSessionId];
+          if ((persistedIntent && !currentIntent)
+            || (currentIntent && (currentIntent.intentId !== intent.intentId
+              || currentIntent.revision !== placementIntentRevision))) {
+            throw new NativeRequestError("The task group changed while grouping.", "LEASE_CONFLICT");
+          }
+          return { ...session, groups: upsertGroupIntent(session.groups, intent) };
+        });
+        this.assertCapturedAuthority(request);
         await this.persistLease(lease);
       }
 

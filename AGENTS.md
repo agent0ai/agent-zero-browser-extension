@@ -32,6 +32,12 @@ product-reference material is not included and is not repository instruction.
 - Agent-created working tabs use a real blue Chrome tab group per browser
   session, joining only the exact worker-owned group in that window. Never
   group unrelated user tabs or use the WebUI internal-browser tabs as a substitute.
+  Withdraw only the exact cached window/group binding on Chrome group removal.
+  Before reusing a cached group, a successful authoritative window-group query
+  must still contain it; absence clears that exact binding so a fresh group is
+  created. Read failures abort, and failed grouping mutations are never retried.
+  Recheck connection authority and group identity/revision after awaits; delayed
+  removal of an old group cannot erase a different replacement binding.
 
 ## Security and privacy
 
