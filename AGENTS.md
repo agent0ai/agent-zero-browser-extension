@@ -276,9 +276,9 @@ product-reference material is not included and is not repository instruction.
   losing its point or favicon. Resume requires the same content binding and
   suspended operation/action IDs; cancellation, release, navigation or newer
   movement prevents stale restoration. No cursor is created by either command.
-  Its high-visibility 42x51 arrow keeps the scaled tip exactly at the input
+  Its compact, illuminated 28x34 arrow has no text label and keeps the tip exactly at the input
   point. Near bottom/right viewport edges, mirror only the visual around that
-  tip and place its label inward; never adjust operation coordinates to fit
+  tip; never adjust operation coordinates to fit
   decoration. Short real movements use at least 240 ms (still capped at 600);
   first positioning and reduced-motion positioning remain immediate.
   A production worker may request the fixed Agent Zero favicon only on a
