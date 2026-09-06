@@ -89,6 +89,20 @@ describe("CursorController", () => {
     expect(overlay.states.at(-1)).toEqual({ state: "activated", reduced: true });
   });
 
+  it("makes short real movements visible without exceeding the travel cap", async () => {
+    const overlay = fakeOverlay();
+    const scheduler = new FakeScheduler();
+    const cursor = new CursorController(() => overlay.view, scheduler,
+      { viewport: () => ({ width: 800, height: 600 }), reducedMotion: () => false });
+    await cursor.moveTo({ x: 100, y: 100 });
+    const travelling = cursor.moveTo({ x: 120, y: 100 });
+    scheduler.runNext(120);
+    expect(cursor.currentPoint!.x).toBeGreaterThan(100);
+    expect(cursor.currentPoint!.x).toBeLessThan(120);
+    scheduler.runNext(240);
+    await expect(travelling).resolves.toEqual({ x: 120, y: 100 });
+  });
+
   it("interrupts in-flight travel and removes the overlay on teardown", async () => {
     const overlay = fakeOverlay();
     const scheduler = new FakeScheduler();
