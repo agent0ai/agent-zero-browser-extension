@@ -271,6 +271,11 @@ product-reference material is not included and is not repository instruction.
 - The page cursor must be non-intercepting, isolated in a shadow root,
   accessibility-hidden, bounded to 600 ms of animation, removable on every
   terminal/loss path, and usable with reduced motion and forced colors.
+  Its high-visibility 42x51 arrow keeps the scaled tip exactly at the input
+  point. Near bottom/right viewport edges, mirror only the visual around that
+  tip and place its label inward; never adjust operation coordinates to fit
+  decoration. Short real movements use at least 240 ms (still capped at 600);
+  first positioning and reduced-motion positioning remain immediate.
   A production worker may request the fixed Agent Zero favicon only on a
   successful exact content binding for an active agent-created, non-taken-over
   lease. The optional internal boolean is derived from the worker lease, never

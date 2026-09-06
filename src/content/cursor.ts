@@ -73,7 +73,7 @@ export class CursorController {
     const start = { ...this.point };
     const startedAt = this.scheduler.now();
     const distance = Math.hypot(target.x - start.x, target.y - start.y);
-    const duration = Math.min(MAX_CURSOR_TRAVEL_MS, Math.max(120, distance * 1.35));
+    const duration = Math.min(MAX_CURSOR_TRAVEL_MS, Math.max(240, distance * 1.35));
     overlay.setState("travelling", showLabel, false);
 
     return new Promise((resolve, reject) => {
