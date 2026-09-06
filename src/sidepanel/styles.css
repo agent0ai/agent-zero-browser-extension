@@ -49,6 +49,9 @@ h2 { margin-bottom: 0; font-size: 14px; }
 .activity-event svg { display: block; width: 15px; height: 15px; }
 .activity-event.is-failed > span { color: var(--danger); }
 .activity-event p { margin: 0; font-size: 11px; line-height: 1.5; text-transform: capitalize; }
+.activity-event.is-transient { animation: activity-dismiss 5s ease-out forwards; }
+@keyframes activity-dismiss { 0%, 95% { opacity: 1; } 100% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .activity-event.is-transient { animation: none; } }
 .empty-conversation { padding: 20px 0 0; color: var(--muted); }
 .empty-conversation p { margin: 0; font-size: 12px; }
 .panel-notice { margin: 16px 0 0; color: var(--muted); font-size: 12px; line-height: 1.5; }

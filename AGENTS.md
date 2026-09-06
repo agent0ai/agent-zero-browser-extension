@@ -213,6 +213,10 @@ product-reference material is not included and is not repository instruction.
   hidden. The bounded auto-growing composer and independently scrolling message
   area must fit narrow panels without horizontal overflow. This presentation
   changes no context selection, tab ownership, sharing, or approval authority.
+  Routine activity uses at most one transient row and disappears after five
+  seconds; historical timestamps do not restart that lifetime. Keep messages,
+  failed activity and pending approvals visible. Only presentation is compacted;
+  do not delete context history or cancel underlying work.
   A global side-panel viewer uses a stable browser-profile presentation anchor,
   not a new document ID on each open. The worker retains bounded per-anchor/chat
   unsent user drafts across viewer closure; these are never auto-sent, logged,

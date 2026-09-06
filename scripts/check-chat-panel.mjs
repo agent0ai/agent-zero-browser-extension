@@ -20,6 +20,7 @@ let browser;
 try {
   browser = await chromium.launch({ headless: true, channel: 'chromium' });
   const page = await browser.newPage();
+  await page.clock.install();
   await page.addInitScript(() => {
     const summary = { contextId: 'chat-one', label: 'Untitled task', kind: 'chat', status: 'idle', createdAtMs: 1, updatedAtMs: 2 };
     const task = { ...summary, contextId: 'task-one', label: 'Optional task', kind: 'task' };
@@ -28,6 +29,12 @@ try {
         completionStatus: 'completed', lastSequence: 1, historyBefore: null, hasMoreHistory: false, messageQueue: [], approvals: [] } };
     const state = { ready: true, bridge: { phase: 'READY', loadGenerationId: 'load-one', connection: { state: 'ready', connectionId: 'connection-one', activationReady: true }, activeLeaseCount: 0 }, panel: {} };
     const listeners = new Set();
+    projection.selected.events.push(
+      { contextId: summary.contextId, sequence: 2, event: 'activity', data: { activity: 'tool', status: 'updated' } },
+      { contextId: summary.contextId, sequence: 3, event: 'activity', data: { activity: 'tool', status: 'failed' } },
+      { contextId: summary.contextId, sequence: 4, event: 'activity', data: { activity: 'assistant_work', status: 'working' } },
+    );
+    projection.selected.lastSequence = 4;
     window.chrome = { runtime: { connect: () => {
       setTimeout(() => listeners.forEach(fn => fn({ type: 'state', state })), 0);
       return { onMessage: { addListener: fn => listeners.add(fn), removeListener: fn => listeners.delete(fn) },
@@ -48,6 +55,11 @@ try {
     const input = page.getByRole('textbox', { name: 'Message Agent Zero' });
     await input.waitFor();
     assert.equal(await input.inputValue(), 'A saved draft');
+    assert.equal(await page.locator('.activity-event.is-transient').count(), 1);
+    assert.equal(await page.locator('.activity-event.is-failed').count(), 1);
+    await page.clock.fastForward(5_100);
+    assert.equal(await page.locator('.activity-event.is-transient').count(), 0);
+    assert.equal(await page.locator('.activity-event.is-failed').count(), 1);
     assert.equal(await page.locator('.a0-markdown strong').first().textContent(), 'Hello!');
     assert.equal(await page.locator('.a0-markdown li').count(), 2);
     assert.equal(await page.getByText('Finished', { exact: true }).count(), 0);
