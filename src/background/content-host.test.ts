@@ -42,8 +42,8 @@ describe("content runtime host document binding", () => {
       url: "https://example.com/page",
       incognito: false,
     });
-    executeScript.mockImplementation(async (details: { files?: string[] }) => {
-      if ("files" in details) return [{ frameId: 0, documentId: "document-one" }];
+    executeScript.mockImplementation(async (details: { args?: string[] }) => {
+      if ("args" in details) return [{ frameId: 0, documentId: "document-one", result: true }];
       return [{ frameId: 0, documentId: "document-one", result: "https://example.com" }];
     });
     sendMessage.mockImplementation(async (_tabId: number, message: ContentBindEnvelope) => ({
@@ -59,6 +59,7 @@ describe("content runtime host document binding", () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     globalThis.chrome = priorChrome;
   });
 
@@ -78,7 +79,7 @@ describe("content runtime host document binding", () => {
       });
     }
     await expect(new ContentRuntimeHost().bind(leaseFixture(), assertAuthority)).rejects.toThrow("authority revoked");
-    expect(executeScript.mock.calls.every(([input]) => !("files" in input))).toBe(true);
+    expect(executeScript.mock.calls.every(([input]) => !("args" in input))).toBe(true);
     expect(sendMessage).not.toHaveBeenCalled();
   });
 
@@ -116,9 +117,67 @@ describe("content runtime host document binding", () => {
     );
     expect(executeScript).toHaveBeenCalledWith(expect.objectContaining({
       target: { tabId: 7, documentIds: ["document-one"] },
-      files: expect.any(Array),
+      func: expect.any(Function),
+      args: [expect.any(String)],
       world: "ISOLATED",
     }));
+  });
+
+  function deferInstallation() {
+    let complete!: (result: unknown) => void;
+    let start!: () => void;
+    const started = new Promise<void>((resolve) => { start = resolve; });
+    const installation = new Promise((resolve) => { complete = resolve; });
+    executeScript.mockImplementation(async (details: { args?: string[] }) => {
+      if ("args" in details) { start(); return installation; }
+      return [{ frameId: 0, documentId: "document-one", result: "https://example.com" }];
+    });
+    return { started, complete: () => complete([{ frameId: 0, documentId: "document-one", result: true }]) };
+  }
+
+  it("does not bind until the packaged module installation resolves", async () => {
+    const installation = deferInstallation();
+    const pending = new ContentRuntimeHost().bind(leaseFixture());
+    await installation.started;
+    expect(sendMessage).not.toHaveBeenCalled();
+    const injection = executeScript.mock.calls.find(([input]) => "args" in input)![0];
+    expect(injection).not.toHaveProperty("files");
+    expect(injection.func.constructor.name).toBe("AsyncFunction");
+    installation.complete();
+    await expect(pending).resolves.toMatchObject({ identity: { documentId: "document-one" } });
+    expect(sendMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(["authority revoked", "operation canceled"])("stops a pending module installation when %s, ignoring late completion", async (reason) => {
+    vi.useFakeTimers();
+    const installation = deferInstallation();
+    let active = true;
+    const pending = new ContentRuntimeHost().bind(leaseFixture(), () => {
+      if (!active) throw new Error(reason);
+    });
+    const rejected = expect(pending).rejects.toThrow(reason);
+    await installation.started;
+    active = false;
+    await vi.advanceTimersByTimeAsync(25);
+    await rejected;
+    installation.complete();
+    await vi.advanceTimersByTimeAsync(25);
+    expect(sendMessage).not.toHaveBeenCalled();
+    expect(executeScript.mock.calls.filter(([input]) => "args" in input)).toHaveLength(1);
+  });
+
+  it.each([100, 10_000])("bounds a hung module import by the earlier binding or operation deadline (%i ms)", async (duration) => {
+    vi.useFakeTimers();
+    const installation = deferInstallation();
+    const pending = new ContentRuntimeHost().bind(leaseFixture(), () => undefined, Date.now() + duration);
+    const rejected = expect(pending).rejects.toMatchObject({ a0Code: "DEADLINE_EXCEEDED" });
+    await installation.started;
+    await vi.advanceTimersByTimeAsync(Math.min(duration, 5_000));
+    await rejected;
+    installation.complete();
+    await vi.advanceTimersByTimeAsync(25);
+    expect(sendMessage).not.toHaveBeenCalled();
+    expect(executeScript.mock.calls.filter(([input]) => "args" in input)).toHaveLength(1);
   });
 
   it("rejects a cross-origin probe before injecting the packaged content runtime", async () => {

@@ -1225,6 +1225,50 @@ describe("leased browser runtime", () => {
     expect(tabsRemove).toHaveBeenCalledWith(8);
   });
 
+  it.each(["foreground", "background", "already_active", "takeover_before", "takeover_during_read", "takeover_during_focus", "authority_during_focus", "focus_failure"])("follows only the exact authorized operation tab: %s", async (scenario) => {
+    const snapshot = await addLease(snapshotFixture(), { byte: 11, providerTabId: 8, origin: "created" });
+    const handle = Object.keys(snapshot.session.leasesByHandle)[0];
+    const store = new FakeRuntimeStore(snapshot);
+    const takeOver = () => { store.snapshot.session.leasesByHandle[handle].userIntervened = true; };
+    if (scenario === "takeover_before") takeOver();
+    let reads = 0;
+    tabsGet.mockImplementation(async (id: number) => {
+      if (++reads === 2 && scenario === "takeover_during_read") takeOver();
+      return { id, windowId: 4, url: "https://example.com", active: scenario === "already_active" };
+    });
+    tabsUpdate.mockImplementation(async () => {
+      if (scenario === "takeover_during_focus") takeOver();
+      if (scenario === "authority_during_focus") store.snapshot.session.connection.connectionId = "replacement";
+      if (scenario === "focus_failure") throw new Error("focus unavailable");
+      return { id: 8, windowId: 4, url: "https://example.com", active: true };
+    });
+    const command = vi.fn(async () => {
+      if (scenario === "foreground") expect(tabsUpdate).toHaveBeenCalledWith(8, { active: true });
+      return { ok: true, result: { state: "scrolled" } };
+    });
+    const runtime = new TestBrowserRuntime(store as unknown as RuntimeStore, async () => undefined, {
+      bind: async (lease: TabLease) => ({ ...lease, identity: { ...lease.identity, documentId: "document-one", documentEpoch: 1 }, revision: lease.revision + 1 }),
+      command, release: async () => undefined,
+    } as unknown as import("./content-host").ContentRuntimeHost);
+    const params = performParams({ action: "scroll", target: { tab_handle: handle }, args: { ref: "doc:epoch:opaque" },
+      required_capabilities: ["scroll", "semantic_dom_v1", "cursor_v1"], display: { cursor: true, foreground: scenario !== "background" } });
+    const successful = ["foreground", "background", "already_active"].includes(scenario);
+    if (successful) {
+      await runtime.perform(params);
+      expect(command).toHaveBeenCalledTimes(1);
+      if (scenario === "foreground") {
+        await runtime.perform(params);
+        expect(command).toHaveBeenCalledTimes(1);
+      }
+    } else {
+      await expect(runtime.perform(params)).rejects.toThrow();
+      expect(command).not.toHaveBeenCalled();
+    }
+    expect(tabsUpdate).toHaveBeenCalledTimes(["foreground", "takeover_during_focus", "authority_during_focus", "focus_failure"].includes(scenario) ? 1 : 0);
+    expect(tabsCreate).not.toHaveBeenCalled();
+    expect(tabsGroup).not.toHaveBeenCalled();
+  });
+
   it("journals ref-bound scroll and records cursor attachment only after confirmation", async () => {
     const snapshot = await addLease(snapshotFixture(), { byte: 11, providerTabId: 8, origin: "created" });
     const handle = Object.keys(snapshot.session.leasesByHandle)[0];
@@ -1279,12 +1323,12 @@ describe("leased browser runtime", () => {
     const snapshot = await addLease(snapshotFixture(), { byte: 51, providerTabId: 51, origin: "created" });
     const handle = Object.keys(snapshot.session.leasesByHandle)[0];
     const store = new FakeRuntimeStore(snapshot);
-    const command = vi.fn(async (_lease: TabLease, input: { command: { name: string } }) => ({
-      ok: true,
-      result: input.command.name === "target.prepare_hover"
+    const command = vi.fn(async (_lease: TabLease, input: { command: { name: string } }) => {
+      if (input.command.name === "target.prepare_hover") expect(tabsUpdate).toHaveBeenCalledWith(51, { active: true });
+      return { ok: true, result: input.command.name === "target.prepare_hover"
         ? { state: "hover_ready", x: 70, y: 60 }
-        : { state: "activated", x: 70, y: 60 },
-    }));
+        : { state: "activated", x: 70, y: 60 } };
+    });
     const runtime = new TestBrowserRuntime(
       store as unknown as RuntimeStore,
       async () => undefined,
@@ -1306,7 +1350,7 @@ describe("leased browser runtime", () => {
       target: { tab_handle: handle },
       args: { ref: "doc:epoch:opaque" },
       required_capabilities: ["hover", "semantic_dom_v1", "cursor_v1", "trusted_input_v1"],
-      display: { cursor: true, foreground: false },
+      display: { cursor: true, foreground: true },
     }));
 
     expect(debuggerSendCommand).toHaveBeenCalledWith(
