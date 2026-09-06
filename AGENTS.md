@@ -202,6 +202,14 @@ product-reference material is not included and is not repository instruction.
   advertise those restrictions. Mac packaged setup is primary; CLI instructions
   stay in an optional disclosure. Changing build-channel text never migrates
   development credentials or authorizes production control.
+  The side panel is conversation-first: Agent Zero branding stays primary,
+  chats precede optional tasks in the switcher, and completed replies do not
+  replace the conversation with a task-completion dashboard. Browser access is
+  a secondary disclosure; its count is explicitly agent-controlled tabs across
+  chats, never an inventory of the user's open Chrome tabs. Empty queues stay
+  hidden. The bounded auto-growing composer and independently scrolling message
+  area must fit narrow panels without horizontal overflow. This presentation
+  changes no context selection, tab ownership, sharing, or approval authority.
   Native-port disconnect callbacks synchronously consume Chrome's lastError
   even for obsolete or intentionally closed ports; generation checks still
   prevent those callbacks from changing replacement/user-disconnected/blocked
