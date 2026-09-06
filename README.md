@@ -8,7 +8,8 @@ an execution authority.
 
 ## Install without the Web Store
 
-Use the supplied unpacked ZIP and open **START-HERE.html** after extracting it.
+[Download the ready-to-load ZIP](https://github.com/agent0ai/agent-zero-browser-extension/releases/download/extension-v0.1.1-prestore/agent-zero-browser-0.1.1-unpacked.zip)
+and open **START-HERE.html** after extracting it.
 No Node, Rust, or source build is needed to load the extension. See the
 [setup guide](docs/INSTALL.md) for macOS, Windows, Linux, and Docker instructions.
 
@@ -35,30 +36,12 @@ Load `dist/` as an unpacked extension after building. The native companion and
 Agent Zero installation paths are documented by the surrounding project; this
 package does not store an Agent Zero API key.
 
-### Separate local-development channel
+### Historical development channel
 
-Use `npm run build:development` and load `dist-development/` for the separate
-**Agent Zero Chrome Bridge (Development)** identity. It connects only to the
-source-built `io.agentzero.browser_bridge.dev` native companion. The default
-`dist/` output remains a production build with independent release/activation
-requirements; it cannot substitute for the development identity.
-
-With matching Core and companion builds, Core's explicit
-`A0_BROWSER_BRIDGE_DEVELOPMENT_RUNTIME=limited-v1` opt-in adds limited control.
-Pairing alone does not enable it. In Agent Zero Browser settings, select the
-paired development browser for the intended chat and allow the exact site
-origins it may open. Then choose **Reconnect after selection** in extension
-Options. Readiness follows a fresh signed handshake and tab reconciliation;
-Refresh only reads status and cannot grant control.
-
-This mode supports owned tabs, tab groups, page reading, navigation, scrolling,
-and the illuminated cursor. Extension chat relay, screenshots, clicking and
-typing are unavailable in this mode even though their separately gated source
-implementations are described below. Use the Agent Zero WebUI for tasks. The
-native companion belongs on the computer running Chrome, including when Agent
-Zero itself runs in Docker. A0 CLI can install/update it but need not stay open.
-After updating companion/extension files, reload the extension in Chrome; do
-not uninstall an existing paired companion to update its binary.
+`build:development` retains a separate identity for historical protocol work.
+The current Core integration retires its server endpoints: it is not a supported
+installation or a fallback for production. Use the production package above;
+never copy development credentials into it.
 
 ## Implemented safety boundary
 
