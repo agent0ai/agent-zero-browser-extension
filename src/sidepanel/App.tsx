@@ -558,7 +558,7 @@ function RecoveryState({ runtime }: { runtime: RuntimePresentation }) {
         : blocked
         ? "The companion could not be verified, so browser control is off. Open connection settings to check the installation."
         : productionPaired
-        ? "Select this browser for your chat in Agent Zero. Connection checks retry automatically. No new pairing code is needed, and you can close this panel."
+        ? "In Agent Zero Browser settings, choose this browser as your default once. Existing project choices stay unchanged. If already selected, connection checks retry automatically. No new code is needed, and you can close this panel."
         : "Set up the local companion and pair this Chrome profile once. Your pairing is saved across restarts."}</p>
       {limited && <p>Chat in this extension, screenshots, clicking and typing are not available in development mode.</p>}
       <button className="primary-button" type="button" onClick={() => chrome.runtime.openOptionsPage()}>

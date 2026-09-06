@@ -38,7 +38,8 @@ Draft description for review once production acceptance is complete:
 >
 > Install the companion on the computer running Chrome, even when Agent Zero
 > runs in Docker. Pair this browser once with your Agent Zero instance, then
-> select it for your chat. Updates normally keep your saved pairing.
+> choose it once as your default in Agent Zero Browser settings. Existing project
+> choices stay unchanged. Updates normally keep your saved pairing.
 >
 > Approved page information is sent to your paired Agent Zero instance and may
 > be processed by its configured AI providers. This community-maintained project
@@ -225,3 +226,7 @@ status is provided in the side panel.
   Production screens no longer suggest repeating setup while pairing is saved;
   actual development packages retain their distinct label and restrictions.
   No permissions, manifest identity or version change is included in this fix.
+- 2026-09-06: Production setup now explains the one-time default-browser choice
+  across chats, preserving explicit project choices. Pairing saved does not
+  claim the default was saved or that control is ready. Options/panel screenshots
+  should be refreshed for this wording; development guidance remains separate.

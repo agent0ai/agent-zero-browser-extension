@@ -138,7 +138,7 @@ export function App() {
       observer.applyResponse(captured, response.state);
       setPairingNotice(BUILD_CHANNEL.development
         ? "Development identity paired. Select it in Agent Zero Browser settings, then reconnect after selection."
-        : "Pairing completed. Chrome is reconnecting to Agent Zero.");
+        : "Pairing completed. In Agent Zero Browser settings, choose this browser as your default once. Chrome checks the connection automatically.");
     } catch {
       if (observer.active && operation === operationRef.current) setPairingNotice("Pairing could not be confirmed. Check the saved pairing status first. If Agent Zero lists this browser but the companion has no saved pairing, remove that browser in Agent Zero before creating a new code.");
     } finally {
@@ -260,7 +260,7 @@ export function App() {
                   ? "Checking existing browser tabs before enabling control."
                   : "Pairing and browser control are separate. Agent Zero must enable development control and select this browser for your chat."
                 : paired && companionDetected
-                  ? "Select this browser for your chat in Agent Zero. The connection checks retry automatically; you can close this page."
+                  ? "In Agent Zero Browser settings, choose this browser as your default once. Connection checks retry automatically; you can close this page."
                   : "Waiting for the local companion. Check the installation below if it remains unavailable."}
             {!companionDetected ? <> <a href="#companion-install">Open installation steps</a></> : null}
           </p>
@@ -322,7 +322,7 @@ export function App() {
                 : "No new pairing code is needed. In Agent Zero Browser settings → Development browser companion, choose Use this development browser for your chat. Then reconnect here."
               : connected
               ? "Continue in Agent Zero to choose browser tasks and approve site access."
-              : "No new pairing code is needed. Select this browser for your chat in Agent Zero. Connection checks retry automatically; browser control stays off until they succeed."}</p>
+              : "No new pairing code is needed. In Agent Zero Browser settings, choose this browser as your default once for chats without a project override. If already selected, just wait for the automatic connection check. Browser control stays off until checks succeed."}</p>
           </div>
           <div className="paired-actions">
             {BUILD_CHANNEL.development && runtime.canReconnectDevelopmentBrowser ? (

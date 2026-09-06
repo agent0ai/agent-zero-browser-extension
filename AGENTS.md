@@ -137,11 +137,17 @@ product-reference material is not included and is not repository instruction.
   `src/ui/theme.css`: local Rubik/Roboto Mono fonts with their bundled OFL
   licenses, neutral dark surfaces, compact blue-accented controls and reduced-
   motion-safe status feedback. Keep connection rows and the next available
-  action primary; pairing is saved per Chrome profile, while chat selection
+  action primary; pairing is saved per Chrome profile, while browser selection
   and site approvals remain separate. Installation and diagnostics belong in
   disclosures, and presentation changes never alter worker authority.
   Packaged host installation is the first setup instruction; source-build CLI
   commands belong in a secondary disclosure, not the primary onboarding path.
+  Production setup directs the user to choose this browser once as Agent Zero's
+  default in protected Browser settings, even without an open chat. Existing
+  explicit project choices remain unchanged. Saved pairing alone never proves
+  that the default was saved or that browser control is ready; if already
+  selected, describe the existing automatic admission retry instead of asking
+  for a new code or repeated per-chat setup. Development instructions stay separate.
 
 - Local development is selected only by `vite build --mode local-development`
   (`npm run build:development`). It uses `dist-development`, the pinned public
