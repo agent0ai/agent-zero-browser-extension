@@ -1,8 +1,19 @@
 # Delivery and release status
 
-This repository is private and the current bridge is a development preview,
-not a production release. Local builds produce installable development packages;
-they do not publish to a browser store or authorize production browser control.
+This repository remains private pending the licensing/asset review described
+in THIRD_PARTY_NOTICES.md. Production-channel browser control has been exercised
+with the matching macOS companion and Core integration. Windows/Linux native
+installers and platform acceptance remain incomplete. Local packaging does not
+publish to the Web Store or authorize browser control.
+
+## Pre-store packages
+
+Version 0.1.1 separates the publisher dashboard ZIP from the guided direct-install
+ZIP. The latter wraps identical extension bytes with START-HERE.html and a
+per-file integrity receipt; no build tools are required on the user's computer.
+See [installation and packaging](docs/INSTALL.md). Keep the dashboard manifest at
+the ZIP root and increment its version for each upload. Never advertise the
+cross-platform extension folder as proof that all native installers are available.
 
 ## Repository ownership
 

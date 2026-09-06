@@ -215,9 +215,14 @@ product-reference material is not included and is not repository instruction.
   resets backoff. Options/panel describe automatic checks but transmit no Core
   selection authority and are never keepalive owners. Actual development builds
   keep their truthful badge and limited instructions; production copy must not
-  advertise those restrictions. Mac packaged setup is primary; CLI instructions
+  advertise those restrictions. OS-specific packaged setup is primary; CLI instructions
   stay in an optional disclosure. Changing build-channel text never migrates
   development credentials or authorizes production control.
+  Options and the offline direct-install guide share `src/installation-platforms.json`.
+  Platform detection is an editable presentation suggestion, never native release
+  authority. Do not show a Mac installer or CLI bootstrap for unreleased Windows/
+  Linux targets. The unpacked extension works across desktop platforms, but native
+  installer availability and live browser acceptance must be stated separately.
   The side panel is conversation-first: Agent Zero branding stays primary,
   chats precede optional tasks in the switcher, and completed replies do not
   replace the conversation with a task-completion dashboard. Browser access is
@@ -348,6 +353,14 @@ checks manifest references/permissions, bundled licenses and PNG dimensions,
 then creates and reads back a ZIP with its per-file and archive hashes. It never
 uploads, signs, chooses a publisher identity, or changes runtime admission.
 The candidate receipt explicitly remains unsubmitted/not production-ready.
+
+`scripts/package-unpacked.mjs` wraps an already-inspected production candidate
+in a dependency-free user ZIP with an offline setup guide, notices, and bounded
+per-file receipt. It rechecks source hashes and every ZIP entry's bytes. It never
+rebuilds, downloads, registers a native host, changes Chrome preferences/policies,
+or grants readiness. Keep the dashboard ZIP separate, with manifest.json at root.
+`docs/INSTALL.md` owns the pre-store user instructions, persistent folder location,
+one-time default/pairing flow, Docker host distinction, and platform availability.
 
 Run from this directory:
 

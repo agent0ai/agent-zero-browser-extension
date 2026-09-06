@@ -10,10 +10,13 @@ import {
 } from "../lib/runtime-presentation";
 import { PairingInputError, parsePairingSubmission } from "../lib/pairing";
 import { observeOptionsRuntime } from "./runtime-observer";
+import { INSTALLATION, suggestSetupPlatform, type SetupPlatform } from "../lib/installation";
 
 const HEALTHY_PHASES = new Set(["READY"]);
 
 export function App() {
+  const [setupPlatform, setSetupPlatform] = useState<SetupPlatform | "">(() => suggestSetupPlatform(navigator.platform));
+  const platformSetup = setupPlatform ? INSTALLATION.platforms[setupPlatform] : null;
   const [runtime, setRuntime] = useState<RuntimePresentation>(EMPTY_RUNTIME_PRESENTATION);
   const [checking, setChecking] = useState(false);
   const [loadError, setLoadError] = useState("");
@@ -356,20 +359,32 @@ export function App() {
         <summary>Install or repair the native companion</summary>
         <div className="installation-content">
           <p>Install on the computer running Chrome.</p>
-          <p>{BUILD_CHANNEL.development
-            ? "Open your Agent Zero companion package. On macOS, open Install.command and follow the prompt. On Linux, run install.sh from that package. Updating keeps your saved pairing."
-            : "On macOS, open Agent Zero Browser Setup from the official companion download and choose Install browser companion. You can close the installer when it finishes."}</p>
+          {BUILD_CHANNEL.development ? <p>Open your Agent Zero companion package. On macOS, open Install.command and follow the prompt. On Linux, run install.sh from that package. Updating keeps your saved pairing.</p> : <>
+            <label className="setup-platform">Chrome computer
+              <select value={setupPlatform} onChange={(event) => setSetupPlatform(event.currentTarget.value as SetupPlatform | "")}>
+                <option value="">Choose your operating system</option>
+                {Object.entries(INSTALLATION.platforms).map(([key, value]) => <option value={key} key={key}>{value.label}</option>)}
+              </select>
+            </label>
+            {platformSetup ? <div aria-live="polite">
+              <p><strong>{platformSetup.requirement}</strong></p>
+              <p>{platformSetup.description}</p>
+              {platformSetup.download_url ? <p><a href={platformSetup.download_url} target="_blank" rel="noopener noreferrer">Download {platformSetup.label} companion</a></p> : null}
+            </div> : null}
+            <p><a href={INSTALLATION.guide_url} target="_blank" rel="noopener noreferrer">Setup guide for macOS, Windows, and Linux</a></p>
+            <p>No Web Store install is needed for the supplied ZIP. Extract it to a folder you will keep, then use Chrome → Extensions → Developer mode → Load unpacked and select its <code>extension</code> folder. These Chrome steps cannot be automated for an ordinary unpacked installation.</p>
+          </>}
           {BUILD_CHANNEL.development ? <details>
             <summary>Using A0 CLI with a local source build</summary>
             <p>Use the absolute path to the companion from your package or source build.</p>
             <pre aria-label="Local source CLI install command"><code>a0 browser-extension development install --source-binary /absolute/path/to/a0-browser-bridge --browser chrome --yes</code></pre>
-          </details> : <details>
+          </details> : platformSetup?.available ? <details>
             <summary>Install using A0 CLI instead</summary>
             <pre aria-label="CLI install command"><code>a0 browser-extension install</code></pre>
-          </details>}
+          </details> : null}
           <p className="card-note">{BUILD_CHANNEL.development
             ? "Use a local-development package for this Development extension. After installation, keep your existing pairing or pair this profile once."
-            : <>Use <code>status</code> or <code>repair</code> in place of <code>install</code> when needed.</>}</p>
+            : "Keep the same extension folder and Chrome profile when updating. Reload the extension after an update; do not remove it or pair again."}</p>
           <p>Agent Zero may run in Docker, but Chrome and its native companion run on your computer—not inside the container.</p>
           <p className="card-note">{BUILD_CHANNEL.development
             ? "Open Browser settings → Development browser companion. The server must enable source-build setup for its exact loopback URL."
