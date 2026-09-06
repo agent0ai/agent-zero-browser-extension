@@ -7,6 +7,74 @@ No store submission or production publication has occurred.
 Status: implementation-stage inventory for `a0.browser-bridge.v1`. This is not
 a statement that the extension is ready for publication.
 
+## Listing draft and public links
+
+- Name: **Agent Zero Chrome Bridge** (production manifest name).
+- Short description: **Agent Zero side panel and user-visible browser task runtime.**
+- Category: Productivity. Primary language: English.
+- Maintainer: TerminallyLazy. Store publisher identity is not yet reserved or verified.
+- [Homepage and support](https://github.com/TerminallyLazy/agent-zero-browser-support).
+- [Privacy policy](https://github.com/TerminallyLazy/agent-zero-browser-support/blob/main/PRIVACY.md).
+- [Setup](https://github.com/TerminallyLazy/agent-zero-browser-support/blob/main/SETUP.md).
+- [Report a problem](https://github.com/TerminallyLazy/agent-zero-browser-support/issues/new).
+
+These are public documentation links, verified without authentication on
+2026-09-05. They do not expose private source or claim a public production
+download. Store contact email still requires publisher-account verification;
+a GitHub public profile address is not proof that store notifications are configured.
+
+Draft description for review once production acceptance is complete:
+
+> Connect Agent Zero to your Chrome browser and follow its work in a side panel.
+> Agent-created tabs are grouped so you can see which pages belong to a task.
+> A visible cursor shows browser activity. You choose which sites it may use,
+> review sensitive actions, and can take over a tab at any time.
+>
+> Install the companion on the computer running Chrome, even when Agent Zero
+> runs in Docker. Pair this browser once with your Agent Zero instance, then
+> select it for your chat. Updates normally keep your saved pairing.
+>
+> Approved page information is sent to your paired Agent Zero instance and may
+> be processed by its configured AI providers. This community-maintained project
+> is not an OpenAI product. Read the privacy policy and setup guide before pairing.
+
+Do not submit this draft as a working production listing while runtime/signing
+gates remain closed. The limited preview is not advertised as full browser control.
+
+### Store disclosure inventory
+
+The product **handles user data**, including locally processed data. Do not
+select a blanket "no data collected" disclosure merely because the maintainer
+has no analytics backend. Page reading may contain sensitive categories.
+
+| Data category | Handling and recipient |
+| --- | --- |
+| Authentication information | Short-lived pairing code and native OS-store credential connect to the chosen Agent Zero server; no Chrome password/cookie API. |
+| Website content | Approved page text/structure goes to the chosen Agent Zero instance; production candidate additionally handles approved screenshots and current-chat files. |
+| User activity / web browsing activity | Task sites, navigation addresses and actions are processed for approved browser tasks; no general Chrome history-database collection. |
+| Personal communications | May occur in approved page content; selected-chat relay exists only in the unreleased production candidate. |
+| Personal, health, financial, or location information | May be present in approved page/chat/file content. No separate background collection of these categories; downstream handling follows the configured server/providers. |
+
+No developer-operated analytics, advertising, sale of task data, or credit/lending
+use is implemented. Site origins and bounded redacted safety records remain local;
+server chat/artifact retention is independent. Uninstalling Chrome's extension is
+not credential revocation or server-data deletion. The public policy records
+these boundaries and the preview/production-candidate distinction.
+
+### Assets and package
+
+The existing 16/48/128 PNG icon dimensions and local font/license assets are
+checked by `scripts/package-store-candidate.mjs`. A fresh production-channel
+ZIP is built with source and per-file hashes; development keys, source maps,
+hidden files and symlinks are rejected. Store screenshots still require an
+accepted production UI session; development/synthetic screenshots are not
+presented as production evidence. Source/brand licensing approval and monitored
+publisher contact remain release requirements.
+
+| Version | Date | Status |
+| --- | --- | --- |
+| 0.1.0 | 2026-09-05 | Draft upload candidate only; not submitted or published. |
+
 ## Local-development installation
 
 `npm run build:development` produces `dist-development` for an explicit Chrome

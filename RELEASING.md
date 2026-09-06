@@ -67,6 +67,24 @@ has read-only contents permission. The setup follows the
 
 ## Production release gates
 
+Prepare the Chrome Web Store upload candidate without Actions:
+
+```sh
+node scripts/package-store-candidate.mjs /absolute/path/to/new-store-candidate
+```
+
+The ZIP contains only inspected extension runtime assets. `BUILD.json` records
+the exact source fingerprint, every packaged file hash, and archive hash.
+It is an **unsubmitted candidate**, not a signed companion installation or an
+approved Chrome Web Store release. The command leaves installed extension
+folders untouched and rejects an existing output directory.
+
+Public user-facing documentation is maintained separately in
+[agent-zero-browser-support](https://github.com/TerminallyLazy/agent-zero-browser-support).
+The privacy and support links require no GitHub login or GitHub Actions. Keep
+the private source repository private unless the owner explicitly changes its
+distribution scope; public documentation is not a source-license grant.
+
 Before enabling a production publishing workflow:
 
 1. Reserve the production/beta store identities and configure publisher access.

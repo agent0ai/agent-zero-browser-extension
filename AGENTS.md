@@ -219,6 +219,13 @@ as exact-base binary Git patches and hashed new files without commits, index
 changes or publication. It excludes ignored state, hidden files and symlinks,
 requires a fresh output directory, and never applies patches automatically.
 
+`scripts/package-store-candidate.mjs` builds only the production channel into a
+fresh explicit output, inventories an exact allowlist of regular package files,
+checks manifest references/permissions, bundled licenses and PNG dimensions,
+then creates and reads back a ZIP with its per-file and archive hashes. It never
+uploads, signs, chooses a publisher identity, or changes runtime admission.
+The candidate receipt explicitly remains unsubmitted/not production-ready.
+
 Run from this directory:
 
 The upload lane accepts only a Core-registered bounded artifact descriptor and
