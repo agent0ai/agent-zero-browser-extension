@@ -3,6 +3,7 @@ import { BUILD_CHANNEL } from "../build-channel";
 import { AgentZeroLogo } from "../ui/AgentZeroLogo";
 import type { TabMentionChoice } from "../background/tab-mentions";
 import { Markdown } from "./Markdown";
+import { activityDeadline, compactEvents, routineActivity } from "./activity";
 
 import { connectSidePanelPort, sendSidePanelRequest } from "../lib/extension";
 import {
@@ -556,7 +557,7 @@ function ChatWorkspace({
         </div>
         {selected.events.length > 0 ? (
           <ol className="event-list">
-            {selected.events.map((event) => <EventItem event={event} key={`${event.sequence}:${event.correlationId ?? ""}`} />)}
+            {compactEvents(selected.events).map((event) => <EventItem event={event} key={`${event.contextId}:${event.sequence}:${event.correlationId ?? ""}`} />)}
           </ol>
         ) : (
           <div className="empty-conversation"><p>What would you like to talk about? Send a message below.</p></div>
@@ -598,6 +599,16 @@ function ChatWorkspace({
 }
 
 function EventItem({ event }: { event: ContextEvent }) {
+  const transient = routineActivity(event);
+  const [expired, setExpired] = useState(() => transient && activityDeadline(event, Date.now()) <= Date.now());
+  useEffect(() => {
+    if (!transient) return;
+    const remaining = activityDeadline(event, Date.now()) - Date.now();
+    if (remaining <= 0) { setExpired(true); return; }
+    const timer = setTimeout(() => setExpired(true), remaining);
+    return () => clearTimeout(timer);
+  }, [transient, event.timestampMs]);
+  if (transient && expired) return null;
   if (event.event === "message") {
     return (
       <li className={`message ${event.data.role === "user" ? "is-user" : "is-assistant"}`}>
@@ -607,7 +618,7 @@ function EventItem({ event }: { event: ContextEvent }) {
     );
   }
   return (
-    <li className={`activity-event is-${event.data.status}`}>
+    <li className={`activity-event is-${event.data.status}${transient ? " is-transient" : ""}`}>
       <span aria-hidden="true"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
         <circle cx="10" cy="10" r="7" />
         {event.data.status === "working" ? <path d="M10 6v4l2 2" /> : event.data.status === "failed" ? <path d="M10 6.5v4M10 13h.01" /> : <path d="m6.5 10 2.3 2.3 4.7-4.6" />}
