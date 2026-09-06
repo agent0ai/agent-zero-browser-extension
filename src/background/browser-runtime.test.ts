@@ -202,6 +202,7 @@ describe("leased browser runtime", () => {
   const tabsUngroup = vi.fn();
   const tabsUpdate = vi.fn();
   const tabGroupsUpdate = vi.fn();
+  const tabGroupsQuery = vi.fn();
   const alarmsClear = vi.fn();
   const alarmsCreate = vi.fn();
   const debuggerAttach = vi.fn();
@@ -218,6 +219,7 @@ describe("leased browser runtime", () => {
     tabsUngroup.mockResolvedValue(undefined);
     tabsUpdate.mockResolvedValue({ id: 8, windowId: 4, url: "https://example.com/next" });
     tabGroupsUpdate.mockResolvedValue({ id: 11 });
+    tabGroupsQuery.mockResolvedValue([{ id: 11, windowId: 4, title: "Research", color: "blue" }]);
     alarmsClear.mockResolvedValue(true);
     debuggerAttach.mockResolvedValue(undefined);
     debuggerSendCommand.mockResolvedValue({ data: "AQIDBA==" });
@@ -231,7 +233,7 @@ describe("leased browser runtime", () => {
         ungroup: tabsUngroup,
         update: tabsUpdate,
       },
-      tabGroups: { TAB_GROUP_ID_NONE: -1, update: tabGroupsUpdate },
+      tabGroups: { TAB_GROUP_ID_NONE: -1, update: tabGroupsUpdate, query: tabGroupsQuery },
       alarms: { clear: alarmsClear, create: alarmsCreate },
       debugger: {
         attach: debuggerAttach,
@@ -417,6 +419,97 @@ describe("leased browser runtime", () => {
     expect(JSON.stringify(store.snapshot.ledger)).not.toContain(
       Object.values(store.snapshot.session.leasesByHandle)[0].leaseId,
     );
+  });
+
+  it.each(["missed", "delivered"])("repairs a %s group-removal event after the final owned tab closes", async (eventDelivery) => {
+    const store = new FakeRuntimeStore(snapshotFixture());
+    const runtime = new TestBrowserRuntime(store as unknown as RuntimeStore);
+    let nextTab = 7, nextGroup = 11;
+    const tabs = new Map<number, { id: number; windowId: number; groupId: number; url: string }>();
+    const groups = new Set<number>();
+    tabsCreate.mockImplementation(async () => {
+      const tab = { id: nextTab++, windowId: 4, groupId: -1, url: "https://example.com" };
+      tabs.set(tab.id, tab); return tab;
+    });
+    tabsGet.mockImplementation(async (id: number) => { if (!tabs.has(id)) throw Error("No tab"); return tabs.get(id); });
+    tabsGroup.mockImplementation(async ({ tabIds, groupId }: { tabIds: number; groupId?: number }) => {
+      if (groupId !== undefined && !groups.has(groupId)) throw Error("No group with id");
+      const id = groupId ?? nextGroup++; groups.add(id); tabs.get(tabIds)!.groupId = id; return id;
+    });
+    tabsRemove.mockImplementation(async (id: number) => {
+      const groupId = tabs.get(id)?.groupId; tabs.delete(id);
+      if (groupId !== undefined && ![...tabs.values()].some((tab) => tab.groupId === groupId)) groups.delete(groupId);
+    });
+    tabGroupsQuery.mockImplementation(async () => [...groups].map((id) => ({ id, windowId: 4 })));
+    const first = await runtime.perform(performParams());
+    const leaseId = (first.result as { lease_id: string }).lease_id;
+    await expect(runtime.finalize({ contract_version: 1, control_id: "finalize-first", context_id: "context-one",
+      browser_session_id: "session-one", turn_id: "turn-one", dispositions: { [leaseId]: "ephemeral" }, reason: "completed" }))
+      .resolves.toMatchObject({ closed: [leaseId] });
+    expect(groups.size).toBe(0);
+    if (eventDelivery === "delivered") await runtime.observeTabGroupRemoved(4, 11);
+    await expect(runtime.perform(performParams({ op_id: "op-two", action_id: "action-two", turn_id: "turn-two" })))
+      .resolves.toMatchObject({ status: "succeeded", result: { grouped: true } });
+    expect(tabsGroup).toHaveBeenLastCalledWith({ tabIds: 8, createProperties: { windowId: 4 } });
+    expect(tabGroupsUpdate).toHaveBeenLastCalledWith(12, { title: "Research", color: "blue" });
+    await runtime.observeTabGroupRemoved(4, 11); // a delayed old event cannot erase replacement 12
+    expect(store.snapshot.session.groups.intentsByBrowserSession["session-one"].providerGroupsByWindow["4"].providerGroupId).toBe(12);
+  });
+
+  it("reuses only its verified live cached group", async () => {
+    const store = new FakeRuntimeStore(snapshotFixture());
+    const runtime = new TestBrowserRuntime(store as unknown as RuntimeStore);
+    await runtime.perform(performParams());
+    tabsCreate.mockResolvedValue({ id: 8, windowId: 4, url: "https://example.com" });
+    // Another user group is not a candidate, even when it has the same title.
+    tabGroupsQuery.mockResolvedValue([{ id: 90, windowId: 4, title: "Research" }, { id: 11, windowId: 4 }]);
+    await runtime.perform(performParams({ op_id: "op-two", action_id: "action-two" }));
+    expect(tabGroupsQuery).toHaveBeenCalledWith({ windowId: 4 });
+    expect(tabsGroup).toHaveBeenLastCalledWith({ tabIds: 8, groupId: 11 });
+    expect(tabGroupsUpdate).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not group after connection replacement during cached-group verification", async () => {
+    const store = new FakeRuntimeStore(snapshotFixture());
+    const runtime = new TestBrowserRuntime(store as unknown as RuntimeStore);
+    await runtime.perform(performParams());
+    tabGroupsQuery.mockImplementation(async () => {
+      store.snapshot.session.connection = { ...store.snapshot.session.connection, connectionId: "replacement" };
+      return [{ id: 11, windowId: 4 }];
+    });
+    await expect(runtime.perform(performParams({ op_id: "op-two", action_id: "action-two" })))
+      .rejects.toMatchObject({ a0Code: "OUTCOME_UNKNOWN" });
+    expect(tabsGroup).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not infer missing groups from failed reads or retry a failed group mutation", async () => {
+    const store = new FakeRuntimeStore(snapshotFixture());
+    const runtime = new TestBrowserRuntime(store as unknown as RuntimeStore);
+    await runtime.perform(performParams());
+    tabGroupsQuery.mockRejectedValueOnce(Error("read failed"));
+    await expect(runtime.perform(performParams({ op_id: "op-two", action_id: "action-two" }))).rejects.toThrow();
+    expect(tabsGroup).toHaveBeenCalledTimes(1);
+    expect(store.snapshot.session.groups.intentsByBrowserSession["session-one"].providerGroupsByWindow["4"].providerGroupId).toBe(11);
+    tabsGroup.mockRejectedValueOnce(Error("group removed after successful read"));
+    await expect(runtime.perform(performParams({ op_id: "op-three", action_id: "action-three" }))).rejects.toThrow();
+    expect(tabsGroup).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not group when its persisted task group disappears during lease persistence", async () => {
+    const store = new FakeRuntimeStore(snapshotFixture());
+    const runtime = new TestBrowserRuntime(store as unknown as RuntimeStore);
+    await runtime.perform(performParams());
+    const updateBoth = store.updateBoth.bind(store);
+    store.updateBoth = async (reducer) => {
+      await updateBoth(reducer);
+      if (Object.values(store.snapshot.session.leasesByHandle).some((lease) => lease.expectedGroupActionId === "action-two")) {
+        store.snapshot.session.groups = createGroupRegistry();
+      }
+      return store.snapshot;
+    };
+    await expect(runtime.perform(performParams({ op_id: "op-two", action_id: "action-two" })))
+      .rejects.toMatchObject({ a0Code: "LEASE_CONFLICT" });
+    expect(tabsGroup).toHaveBeenCalledTimes(1);
   });
 
   it("captures an exact leased viewport and returns only its verified artifact descriptor after cleanup", async () => {

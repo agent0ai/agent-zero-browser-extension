@@ -835,6 +835,10 @@ chrome.tabs.onRemoved.addListener((tabId) => {
   void ensureBooted().then(() => browserRuntime.observeTabRemoved(tabId));
 });
 
+chrome.tabGroups.onRemoved.addListener((group) => {
+  void ensureBooted().then(() => browserRuntime.observeTabGroupRemoved(group.windowId, group.id));
+});
+
 chrome.debugger.onDetach.addListener((source) => {
   void ensureBooted().then(() => browserRuntime.observeDebuggerDetached(source));
 });
