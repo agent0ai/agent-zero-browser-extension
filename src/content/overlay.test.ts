@@ -67,6 +67,10 @@ describe("cursor overlay", () => {
     }
 
     view.setPosition(45, 60);
+    view.setVisible(false);
+    expect(viewport.style.values.get("display")).toEqual({ value: "none", priority: "important" });
+    view.setVisible(true);
+    expect(viewport.style.values.get("display")).toEqual({ value: "block", priority: "important" });
     expect(viewport.style.values.get("--a0-cursor-x")).toEqual({ value: "45px", priority: "important" });
     expect(viewport.style.values.get("--a0-cursor-y")).toEqual({ value: "60px", priority: "important" });
     const pointer = viewport.children[1].children[0];
@@ -85,6 +89,8 @@ describe("cursor overlay", () => {
     view.remove();
     expect(host.removed).toBe(true);
     view.setPosition(100, 100);
+    view.setVisible(false);
+    expect(viewport.style.values.get("display")?.value).toBe("block");
     expect(viewport.style.values.get("--a0-cursor-x")?.value).toBe("45px");
   });
 

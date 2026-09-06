@@ -39,18 +39,52 @@ class FakeScheduler implements AnimationScheduler {
 const fakeOverlay = () => {
   const positions: Array<{ x: number; y: number }> = [];
   const states: Array<{ state: CursorVisualState; reduced: boolean }> = [];
+  const visibility: boolean[] = [];
   let removals = 0;
   const view: CursorOverlayView = {
+    setVisible: (visible) => visibility.push(visible),
     setPosition: (x, y) => positions.push({ x, y }),
     setState: (state, _label, reduced) => states.push({ state, reduced }),
     remove: () => {
       removals += 1;
     },
   };
-  return { view, positions, states, removals: () => removals };
+  return { view, positions, states, visibility, removals: () => removals };
 };
 
 describe("CursorController", () => {
+  it("suspends without losing the real point and animates the next move after restoration", async () => {
+    const overlay = fakeOverlay();
+    const scheduler = new FakeScheduler();
+    const create = vi.fn(() => overlay.view);
+    const cursor = new CursorController(create, scheduler,
+      { viewport: () => ({ width: 800, height: 600 }), reducedMotion: () => false });
+    cursor.resume(cursor.suspend());
+    expect(create).not.toHaveBeenCalled();
+    await cursor.moveTo({ x: 100, y: 100 });
+    const token = cursor.suspend();
+    expect(cursor.currentPoint).toEqual({ x: 100, y: 100 });
+    cursor.resume(token);
+    expect(overlay.visibility).toEqual([false, true]);
+    const travel = cursor.moveTo({ x: 120, y: 100 });
+    expect(scheduler.frames.size).toBe(1);
+    expect(cursor.currentPoint).toEqual({ x: 100, y: 100 });
+    scheduler.runNext(240);
+    await travel;
+    expect(create).toHaveBeenCalledTimes(1);
+    const stale = cursor.suspend();
+    const later = cursor.moveTo({ x: 140, y: 100 });
+    const visibleCount = overlay.visibility.length;
+    cursor.resume(stale);
+    expect(overlay.visibility).toHaveLength(visibleCount);
+    scheduler.runNext(480);
+    await later;
+    const ended = cursor.suspend();
+    cursor.teardown();
+    cursor.resume(ended);
+    expect(create).toHaveBeenCalledTimes(1);
+    expect(cursor.currentPoint).toBeNull();
+  });
   it("clamps endpoints and caps requestAnimationFrame travel at 600ms", async () => {
     const overlay = fakeOverlay();
     const scheduler = new FakeScheduler();

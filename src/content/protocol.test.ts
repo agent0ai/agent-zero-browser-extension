@@ -14,6 +14,14 @@ const binding: ContentBinding = {
 };
 
 describe("content protocol", () => {
+  it("accepts exact private suspension commands without caller tokens or extra fields", () => {
+    const envelope = { contract: CONTENT_CONTRACT, kind: "content.command", ...binding,
+      command_id: "shot", operation_id: "operation", action_id: "action", deadline_ms: 1_500 };
+    for (const name of ["cursor.suspend", "cursor.resume"]) {
+      expect(parseContentEnvelope({ ...envelope, command: { name } }, 1_000).ok).toBe(true);
+      expect(parseContentEnvelope({ ...envelope, command: { name, token: "caller" } }, 1_000).ok).toBe(false);
+    }
+  });
   it("accepts only a boolean optional internal favicon indication on exact binds", () => {
     const value = { contract: CONTENT_CONTRACT, kind: "content.bind", binding, deadline_ms: 1_500 };
     for (const flag of [true, false]) expect(parseContentEnvelope({ ...value, agent_created_favicon: flag }, 1_000).ok).toBe(true);

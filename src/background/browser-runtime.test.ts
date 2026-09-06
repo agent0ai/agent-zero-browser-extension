@@ -512,7 +512,7 @@ describe("leased browser runtime", () => {
     expect(tabsGroup).toHaveBeenCalledTimes(1);
   });
 
-  it("captures an exact leased viewport and returns only its verified artifact descriptor after cleanup", async () => {
+  it.each(["success", "authority_lost", "capture_failed"] as const)("screenshot cursor restoration: %s", async (scenario) => {
     const snapshot = await addLease(snapshotFixture(), {
       byte: 41,
       providerTabId: 41,
@@ -586,7 +586,12 @@ describe("leased browser runtime", () => {
     };
     const contentHost = {
       bind: vi.fn(),
-      command: vi.fn(async () => ({ result: { state: "cancelled" } })),
+      command: vi.fn(async (_lease, input) => {
+        phases.push(input.command.name);
+        expect(store.snapshot.session.leasesByHandle[lease.tabHandle].overlayAttached).toBe(true);
+        return { result: { state: input.command.name === "cursor.suspend" ? "suspended"
+          : input.command.name === "cursor.cancel" ? "cancelled" : "resumed" } };
+      }),
       release: vi.fn(async () => undefined),
     };
     const runtime = new TestBrowserRuntime(
@@ -598,24 +603,43 @@ describe("leased browser runtime", () => {
       artifactTransport,
     );
 
-    const result = await runtime.perform(performParams({
+    if (scenario !== "success") {
+      debuggerSendCommand.mockImplementationOnce(async () => {
+        if (scenario === "capture_failed") throw new Error("capture failed");
+        store.snapshot.session.connection = { ...store.snapshot.session.connection, state: "disconnected" };
+        return { data: "AQIDBA==" };
+      });
+    }
+    const operation = runtime.perform(performParams({
       action: "screenshot",
       target: { tab_handle: lease.tabHandle },
       args: { format: "jpeg", quality: 80 },
       required_capabilities: ["screenshots_v1", "artifacts_v1"],
     }));
+    if (scenario !== "success") {
+      await expect(operation).rejects.toBeDefined();
+      expect(phases).toContain("cursor.suspend");
+      expect(phases).toContain("cursor.cancel");
+      expect(phases).not.toContain("cursor.resume");
+      expect(phases).not.toContain("begin");
+      return;
+    }
+    const result = await operation;
 
     expect(debuggerAttach).toHaveBeenCalledWith({ tabId: 41 }, "1.3");
     expect(contentHost.command).toHaveBeenCalledWith(expect.objectContaining({
       identity: expect.objectContaining({ documentId: "document-41" }),
-    }), expect.objectContaining({ command: { name: "cursor.cancel", reason: "pause" } }));
+    }), expect.objectContaining({ command: { name: "cursor.suspend" } }));
+    expect(contentHost.command).toHaveBeenLastCalledWith(expect.objectContaining({
+      identity: expect.objectContaining({ documentId: "document-41" }),
+    }), expect.objectContaining({ command: { name: "cursor.resume" }, actionId: "action-one", operationId: "op-one" }));
     expect(debuggerSendCommand).toHaveBeenCalledWith(
       { tabId: 41 },
       "Page.captureScreenshot",
       { format: "jpeg", quality: 80, fromSurface: true, captureBeyondViewport: false },
     );
     expect(debuggerDetach).toHaveBeenCalledWith({ tabId: 41 });
-    expect(phases).toEqual(["begin", "chunk", "end"]);
+    expect(phases).toEqual(["cursor.suspend", "cursor.resume", "begin", "chunk", "end"]);
     expect(result).toMatchObject({
       status: "succeeded",
       result: {
@@ -633,6 +657,7 @@ describe("leased browser runtime", () => {
       }],
     });
     expect(store.snapshot.session.leasesByHandle[lease.tabHandle].debuggerAttached).toBe(false);
+    expect(store.snapshot.session.leasesByHandle[lease.tabHandle].overlayAttached).toBe(true);
     expect(JSON.stringify(store.snapshot)).not.toContain("AQIDBA==");
     expect(artifactTransport.artifactAbort).not.toHaveBeenCalled();
   });

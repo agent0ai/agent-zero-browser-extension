@@ -37,8 +37,10 @@ const commandEnvelope = (command: ContentCommand, overrides: Record<string, unkn
 const makeRuntime = (createFavicon?: () => { remove(): void } | null) => {
   const states: CursorVisualState[] = [];
   const positions: Array<{ x: number; y: number }> = [];
+  const visibility: boolean[] = [];
   let removals = 0;
   const view: CursorOverlayView = {
+    setVisible: (visible) => visibility.push(visible),
     setPosition: (x, y) => positions.push({ x, y }),
     setState: (state) => states.push(state),
     remove: () => {
@@ -68,10 +70,42 @@ const makeRuntime = (createFavicon?: () => { remove(): void } | null) => {
       arrivals.push(event);
     },
   });
-  return { runtime, arrivals, positions, states, removals: () => removals };
+  return { runtime, arrivals, positions, states, visibility, removals: () => removals };
 };
 
 describe("ContentRuntime", () => {
+  it.each(["new_move", "release", "navigation"])("never revives a suspended cursor after %s", async (change) => {
+    const { runtime, visibility } = makeRuntime();
+    await runtime.handle(bindEnvelope(), sender);
+    await runtime.handle(commandEnvelope({ name: "cursor.move_to_point", x: 100, y: 100 }), sender);
+    await runtime.handle(commandEnvelope({ name: "cursor.suspend" }), sender);
+    if (change === "new_move") await runtime.handle(commandEnvelope({ name: "cursor.move_to_point", x: 120, y: 120 }, { action_id: "new-action" }), sender);
+    if (change === "release") await runtime.handle(commandEnvelope({ name: "runtime.release", reason: "finalize" }), sender);
+    if (change === "navigation") runtime.handleNavigation();
+    const count = visibility.length;
+    await runtime.handle(commandEnvelope({ name: "cursor.resume" }), sender);
+    expect(visibility).toHaveLength(count);
+  });
+  it("restores only the same bound suspended operation/action and preserves the favicon", async () => {
+    const removeFavicon = vi.fn();
+    const { runtime, visibility, positions } = makeRuntime(() => ({ remove: removeFavicon }));
+    await runtime.handle({ ...bindEnvelope(), agent_created_favicon: true }, sender);
+    await runtime.handle(commandEnvelope({ name: "cursor.move_to_point", x: 100, y: 100 }), sender);
+    expect(await runtime.handle(commandEnvelope({ name: "cursor.suspend" }), sender)).toMatchObject({ result: { state: "suspended" } });
+    await runtime.handle(commandEnvelope({ name: "cursor.resume" }, { operation_id: "wrong" }), sender);
+    await runtime.handle(commandEnvelope({ name: "cursor.resume" }, { action_id: "wrong" }), sender);
+    await runtime.handle(commandEnvelope({ name: "cursor.resume" }, { lease_id: "wrong" }), sender);
+    expect(visibility).toEqual([false]);
+    expect(await runtime.handle(commandEnvelope({ name: "cursor.resume" }), sender)).toMatchObject({ result: { state: "resumed" } });
+    expect(visibility).toEqual([false, true]);
+    expect(positions).toHaveLength(1);
+    expect(removeFavicon).not.toHaveBeenCalled();
+    await runtime.handle(commandEnvelope({ name: "cursor.suspend" }), sender);
+    await runtime.handle(commandEnvelope({ name: "cursor.cancel", reason: "cancel" }), sender);
+    await runtime.handle(commandEnvelope({ name: "cursor.resume" }), sender);
+    expect(visibility).toEqual([false, true, false]);
+    expect(removeFavicon).toHaveBeenCalledTimes(1);
+  });
   it.each(["cancel", "navigation", "release"])("shows no favicon before authenticated created-tab binding and removes it on %s", async (terminal) => {
     const remove = vi.fn();
     const create = vi.fn(() => ({ remove }));
@@ -247,6 +281,7 @@ describe("ContentRuntime", () => {
       },
     } as unknown as Document;
     const view: CursorOverlayView = {
+      setVisible: vi.fn(),
       setPosition: vi.fn(),
       setState: vi.fn(),
       remove: vi.fn(),
@@ -361,7 +396,7 @@ describe("ContentRuntime", () => {
     ownerDocument = { elementFromPoint: () => element, defaultView: { getComputedStyle: () => ({
       display: "block", visibility: "visible", contentVisibility: "visible", pointerEvents: "auto", opacity: "1",
     }) } } as unknown as Document;
-    const cursor = new CursorController(() => ({ setPosition: vi.fn(), setState: vi.fn(), remove: vi.fn() }),
+    const cursor = new CursorController(() => ({ setVisible: vi.fn(), setPosition: vi.fn(), setState: vi.fn(), remove: vi.fn() }),
       { now: () => 0, requestFrame: () => 1, cancelFrame: () => undefined },
       { viewport: () => ({ width: 800, height: 600 }), reducedMotion: () => true });
     const runtime = new ContentRuntime({ extensionId, extensionOrigin, ownerDocument, cursor, now: () => 1_000,
@@ -416,7 +451,7 @@ describe("ContentRuntime", () => {
       },
     } as unknown as Document;
     const cursor = new CursorController(
-      () => ({ setPosition: vi.fn(), setState: vi.fn(), remove: vi.fn() }),
+      () => ({ setVisible: vi.fn(), setPosition: vi.fn(), setState: vi.fn(), remove: vi.fn() }),
       { now: () => 0, requestFrame: () => 1, cancelFrame: () => undefined },
       { viewport: () => ({ width: 800, height: 600 }), reducedMotion: () => true },
     );

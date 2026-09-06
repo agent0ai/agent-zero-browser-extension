@@ -42,6 +42,8 @@ export type ContentCommand =
   | { name: "cursor.move_to_ref"; element_ref: string; show_label?: boolean }
   | { name: "cursor.activate" }
   | { name: "cursor.freeze" }
+  | { name: "cursor.suspend" }
+  | { name: "cursor.resume" }
   | {
       name: "cursor.cancel";
       reason: "approval" | "cancel" | "disconnect" | "pause" | "takeover";
@@ -86,7 +88,7 @@ export type ContentResponse = ContentBinding & {
   ok: boolean;
   result?:
     | {
-        state: "activated" | "arrived" | "cancelled" | "frozen" | "hover_ready" | "released" | "scrolled";
+        state: "activated" | "arrived" | "cancelled" | "frozen" | "hover_ready" | "released" | "scrolled" | "suspended" | "resumed";
         x?: number;
         y?: number;
       }
@@ -265,6 +267,8 @@ const isContentCommand = (value: unknown): value is ContentCommand => {
       );
     case "cursor.activate":
     case "cursor.freeze":
+    case "cursor.suspend":
+    case "cursor.resume":
       return hasExactKeys(value, ["name"]);
     case "cursor.cancel":
       return (

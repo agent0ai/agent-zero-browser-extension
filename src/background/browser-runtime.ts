@@ -2252,6 +2252,7 @@ export class BrowserRuntime {
     };
     this.pendingArtifacts.set(request.actionId, pending);
     let debuggerBinding: DebuggerLeaseBinding | null = null;
+    let cursorSuspended = false;
 
     try {
       this.assertOperationAuthority(request);
@@ -2263,21 +2264,19 @@ export class BrowserRuntime {
           operationId: request.opId,
           actionId: request.actionId,
           deadlineAtMs: request.deadlineAtMs,
-          assertAuthority: () => this.assertOperationAuthority(request),
-          command: { name: "cursor.cancel", reason: "pause" },
+          assertAuthority: () => { this.assertOperationAuthority(request); this.assertNotCanceled(request); },
+          command: { name: "cursor.suspend" },
         });
-        if (cursor.result?.state !== "cancelled") {
-          throw new NativeRequestError("The page cursor did not confirm teardown.", "DOCUMENT_MISMATCH");
+        if (cursor.result?.state !== "suspended") {
+          throw new NativeRequestError("The page cursor did not confirm capture suspension.", "DOCUMENT_MISMATCH");
         }
+        cursorSuspended = true;
       }
       this.assertOperationAuthority(request);
       this.assertNotCanceled(request);
       lease = this.refreshExactOperationLease(request, lease);
       await this.exactLeasedTab(lease);
-      if (lease.overlayAttached) {
-        lease = { ...lease, overlayAttached: false, revision: lease.revision + 1 };
-        await this.persistLease(lease);
-      }
+      // Hidden is still attached: preserve the point and normal cleanup debt.
 
       this.markEffectInvoked(request);
       lease = this.refreshExactOperationLease(request, lease);
@@ -2307,6 +2306,25 @@ export class BrowserRuntime {
       lease = detachedLease;
       lease = { ...lease, debuggerAttached: false, revision: lease.revision + 1 };
       await this.persistLease(lease);
+
+      if (cursorSuspended) {
+        this.assertOperationAuthority(request);
+        this.assertNotCanceled(request);
+        lease = this.refreshExactOperationLease(request, lease);
+        await this.exactLeasedTab(lease);
+        const restored = await this.contentHost.command(lease, {
+          commandId: `screenshot-resume:${request.actionId}`,
+          operationId: request.opId,
+          actionId: request.actionId,
+          deadlineAtMs: request.deadlineAtMs,
+          assertAuthority: () => { this.assertOperationAuthority(request); this.assertNotCanceled(request); },
+          command: { name: "cursor.resume" },
+        });
+        if (restored.result?.state !== "resumed") {
+          throw new NativeRequestError("The page cursor did not confirm capture restoration.", "DOCUMENT_MISMATCH");
+        }
+        cursorSuspended = false;
+      }
 
       this.assertOperationAuthority(request);
       this.assertNotCanceled(request);
@@ -2338,6 +2356,10 @@ export class BrowserRuntime {
             await this.persistLease({ ...current, debuggerAttached: false, revision: current.revision + 1 });
           }
         }
+      }
+      if (cursorSuspended) {
+        const live = this.liveOperations.get(request.actionId);
+        if (live) await this.cancelOperationCursor(live, `screenshot-failure-${request.actionId}`);
       }
       if (!pending.completed) await this.abortPendingArtifact(pending, this.artifactAbortReason(error));
       if (pending.failureCode) {
