@@ -30,6 +30,11 @@ normative semantics were not intentionally changed.
 | `limited-development-control-v1.md` | `b29d2a0eb7259c8bf524f9fb5622c5fb32bd8962e8dd34fa256672312c80be61` |
 | `runtime-transport-scopes-v1.md` | `fa7443570e560d9ac1a96858c5428d3a7d8419b96419c549a9dd4a76103538c3` |
 
+The [platform-scoped catalog v2 addendum](../planning/platform-scoped-release-catalog-v2.md)
+permits complete signed platform groups to ship independently. Catalog v1
+keeps its exact nine-artifact contract. This is an installer metadata revision,
+not a browser/native wire change or relaxation of release/runtime admission.
+
 Compatibility is negotiated at runtime. Do not infer compatibility from a
 repository name, matching version string, local build, or these documents.
 The host-install snapshot includes the 2026-09-05 local-delivery clarification:

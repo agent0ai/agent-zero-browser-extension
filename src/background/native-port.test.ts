@@ -155,6 +155,29 @@ const controllerFixture = (
 };
 
 describe("NativePortController", () => {
+  it("replaces an inactive production port only once and never replays pending requests", async () => {
+    const fixture = controllerFixture();
+    fixture.controller.connect(helloContext());
+    emitHello(fixture.port, helloResult({ activation: undefined }));
+    expect(fixture.controller.retryProductionAdmission("stale")).toBe(false);
+    const pending = fixture.controller.pairingStatus();
+    const rejected = expect(pending).rejects.toBeInstanceOf(NativeConnectionError);
+    expect(fixture.controller.retryProductionAdmission("connection-one")).toBe(false);
+    fixture.controller.disconnect("pairing_disconnected");
+    await rejected;
+    expect(fixture.controller.retryProductionAdmission("connection-one")).toBe(false);
+    fixture.controller.connect(helloContext());
+    fixture.port.messageListeners.at(-1)!({ jsonrpc: "2.0", id: "hello:worker-one",
+      result: helloResult({ connection_id: "connection-two", activation: undefined }) });
+    const posted = fixture.port.postMessage.mock.calls.length;
+    expect(fixture.controller.retryProductionAdmission("connection-two")).toBe(true);
+    expect(fixture.controller.state.reasonCode).toBe("production_admission_retry");
+    expect(fixture.controller.retryProductionAdmission("connection-two")).toBe(false);
+    expect(fixture.port.postMessage.mock.calls).toHaveLength(posted);
+    emitHello(fixture.port); // The detached old port cannot promote authority.
+    expect(fixture.controller.state.state).toBe("disconnected");
+  });
+
   it.each(["posted", "invalid", "send-failed", "replacement", "hook-throws"])("runs reconcile replay hook only after a valid original-port response: %s", async (mode) => {
     let release!: (value: Record<string, unknown>) => void;
     const result = new Promise<Record<string, unknown>>((resolve) => { release = resolve; });

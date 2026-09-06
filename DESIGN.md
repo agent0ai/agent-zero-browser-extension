@@ -210,8 +210,10 @@ visible. Exact motion and focus treatments are recorded in the sidecar.
 ## Shapes
 
 Use the frontmatter's small radius vocabulary: label, control, brand mark, and
-message/composer corners. Status dots are circles (6px). The brand mark is a
-compact bordered square (34px). Boundaries are ordinarily one pixel; keyboard
+message/composer corners. Status dots are circles (6px). The brand mark uses
+Agent Zero's original symbol geometry in a 34px SVG, without a surrounding box.
+Both headers share `src/ui/AgentZeroLogo.tsx`; its color follows the text token,
+including forced colors. Boundaries are ordinarily one pixel; keyboard
 focus uses a separate visible outline (2px, offset 3px). There are no decorative
 pill-shaped action buttons.
 

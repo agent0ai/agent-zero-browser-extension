@@ -126,6 +126,13 @@ product-reference material is not included and is not repository instruction.
 
 ## Manifest and UX
 
+- Both header surfaces use `src/ui/AgentZeroLogo.tsx`, with unchanged symbol
+  geometry from Agent Zero Core's `webui/public/icon.svg`. Render monochrome
+  using the text color, as Core's sidebar does; no placeholder initials or
+  remote asset request. The 34px decorative SVG sits beside the visible name,
+  is hidden from assistive technology, and adds no focus target. This visual
+  reuse does not establish trademark/license clearance for public releases.
+
 - Options and sidepanel share the Native Agent Zero visual language in
   `src/ui/theme.css`: local Rubik/Roboto Mono fonts with their bundled OFL
   licenses, neutral dark surfaces, compact blue-accented controls and reduced-
@@ -141,9 +148,13 @@ product-reference material is not included and is not repository instruction.
   manifest key/ID in `src/build-channel.ts`, and native host
   `io.agentzero.browser_bridge.dev`. Keep its visible Development label and
   separate identity. No runtime preference may change the build channel.
-- The default production build has no development manifest key and still uses
-  `io.agentzero.browser_bridge`. Development identity is not production release
-  trust; preserve `release-trust.ts` and the independent activation gates.
+- The default production build pins the owner-supplied store public key in
+  `src/production-identity.json`, deriving `nhliclifilepdkoolioacpjpijomfplj`, and
+  uses `io.agentzero.browser_bridge`. The store item is a draft. Key and ID
+  recognition do not imply publication, signed companion trust or runtime
+  admission. Development retains its separate key/ID and is never accepted by
+  the production identity check. Package inspectors require the exact reviewed
+  public key and verify its SHA-256/derived ID; never accept an arbitrary key.
 - Pairing-only development hello and pairing responses require the exact
   `a0.browser-bridge.development-trust.v1` / `local-development` profile, with
   connector-session and browser-control readiness both false. Its native RPC
@@ -165,6 +176,21 @@ product-reference material is not included and is not repository instruction.
   control separately, send no selection authority, and expose no admission
   identity/credential projection. No build or source test establishes live
   limited-control acceptance.
+
+- Production paired-but-inactive hello responses use the worker's existing
+  persisted reconnect deadline/attempt count and bounded 30/60/120-second then
+  under-five-minute backoff. Keep the old port non-operational until its alarm
+  requests a fresh native hello; never promote it or replay requests. Alarm
+  handling requires the exact current/persisted connection and deadline, and
+  pending user requests win over retries. Healthy unpaired, fully admitted,
+  blocked, revoked, user-disconnected and development-inactive states cannot
+  request production admission retries. Fresh admission clears the alarm and
+  resets backoff. Options/panel describe automatic checks but transmit no Core
+  selection authority and are never keepalive owners. Actual development builds
+  keep their truthful badge and limited instructions; production copy must not
+  advertise those restrictions. Mac packaged setup is primary; CLI instructions
+  stay in an optional disclosure. Changing build-channel text never migrates
+  development credentials or authorizes production control.
 
 - Keep `minimum_chrome_version` at 120 or newer and preserve only the
   permissions frozen in [`planning/mv3-runtime-v1.md`](planning/mv3-runtime-v1.md).
@@ -249,7 +275,7 @@ npx tsc --noEmit
 Inspect `dist/manifest.json` after every manifest or build-pipeline change.
 For local-development changes also build and inspect
 `dist-development/manifest.json`; verify the public key derives the pinned ID
-and default production output has no key.
+and production output derives the separate recorded store identity.
 Tests must cover worker restart/session loss, forged and stale messages, exact
 lease finalization, two-context isolation, user takeover, cursor teardown,
 side-panel churn, native-host loss, and fail-closed restricted targets.

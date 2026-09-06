@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "preact/hooks";
 import { BUILD_CHANNEL } from "../build-channel";
+import { AgentZeroLogo } from "../ui/AgentZeroLogo";
 
 import { connectSidePanelPort, sendSidePanelRequest } from "../lib/extension";
 import {
@@ -282,7 +283,7 @@ export function App() {
   return (
     <div className="panel-shell">
       <header className="panel-header">
-        <span className="brand-mark" aria-hidden="true">A0</span>
+        <AgentZeroLogo />
         <div className="panel-identity">
           {ready && context.contexts.length > 0 ? (
             <>
@@ -542,12 +543,13 @@ function RecoveryState({ runtime }: { runtime: RuntimePresentation }) {
   const developmentPairing = BUILD_CHANNEL.development
     && runtime.bridge.connection.reasonCode === "development_pairing_only";
   const developmentPaired = developmentPairing && runtime.bridge.connection.reportedServerState === "paired";
+  const productionPaired = !BUILD_CHANNEL.development && runtime.bridge.connection.reportedServerState === "paired";
   return (
     <section className="recovery-card">
-      <h1>{limited ? "Ready for browser tasks" : developmentPaired ? "Pairing is saved" : blocked ? "Check your companion connection" : "Connect Chrome to Agent Zero"}</h1>
+      <h1>{limited ? "Ready for browser tasks" : blocked ? "Check your companion connection" : developmentPaired || productionPaired ? "Pairing is saved" : "Connect Chrome to Agent Zero"}</h1>
       <p>{limited
         ? "Continue in Agent Zero for tasks and site approvals. Development mode can work with owned tabs, read pages, navigate and scroll."
-        : runtime.bridge.connection.limitedTransportReady
+        : BUILD_CHANNEL.development && runtime.bridge.connection.limitedTransportReady
           ? "Checking existing browser tabs before enabling control. Chat in this extension remains unavailable."
         : developmentPairing
         ? developmentPaired
@@ -555,10 +557,12 @@ function RecoveryState({ runtime }: { runtime: RuntimePresentation }) {
           : "Pair once using a code from Agent Zero Browser settings → Development browser companion. Open setup to continue."
         : blocked
         ? "The companion could not be verified, so browser control is off. Open connection settings to check the installation."
+        : productionPaired
+        ? "Select this browser for your chat in Agent Zero. Connection checks retry automatically. No new pairing code is needed, and you can close this panel."
         : "Set up the local companion and pair this Chrome profile once. Your pairing is saved across restarts."}</p>
       {limited && <p>Chat in this extension, screenshots, clicking and typing are not available in development mode.</p>}
       <button className="primary-button" type="button" onClick={() => chrome.runtime.openOptionsPage()}>
-        {developmentPaired || limited ? "Open connection details" : blocked ? "Open repair steps" : "Open connection setup"}
+        {blocked ? "Open repair steps" : developmentPaired || productionPaired || limited ? "Open connection details" : "Open connection setup"}
       </button>
       <details className="reason-code"><summary>Connection diagnostic</summary><code>{runtime.bridge.connection.reasonCode}</code></details>
     </section>

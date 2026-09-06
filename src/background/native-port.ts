@@ -112,6 +112,14 @@ export function canReconnectDevelopmentBrowser(connection: NativeConnectionSnaps
     && connection.limitedTransportReady !== true;
 }
 
+/** Transport retry only; pairing and selection remain Core-owned. */
+export function canRetryProductionAdmission(connection: NativeConnectionSnapshot): boolean {
+  return !BUILD_CHANNEL.development && connection.state === "ready" && !!connection.connectionId
+    && connection.reportedServerState === "paired" && connection.serverState === "paired_inactive"
+    && connection.activationReady === false && connection.reasonCode === "native_pairing_only"
+    && !connection.developmentAdmission && connection.limitedTransportReady !== true;
+}
+
 export interface NativeHelloContext {
   installInstanceId: string;
   loadGenerationId: string;
@@ -416,6 +424,16 @@ export class NativePortController {
       // The native port may already be closed.
     }
     this.transition("disconnected", reasonCode);
+  }
+
+  retryProductionAdmission(expectedConnectionId: string): boolean {
+    // Do not interrupt a user's pairing/status/disconnect request, touch a
+    // replacement port, or promote the old hello. The lifecycle owns the next
+    // fresh connect; no pending request or operation is replayed here.
+    if (!canRetryProductionAdmission(this.snapshot)
+      || this.snapshot.connectionId !== expectedConnectionId || this.pending.size > 0) return false;
+    this.disconnect("production_admission_retry");
+    return true;
   }
 
   pairingStatus(options: NativeRequestOptions = {}): Promise<PairingStatusResult> {

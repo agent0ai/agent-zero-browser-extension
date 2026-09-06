@@ -10,10 +10,12 @@ import {
   NativeRequestError,
   browserConnectionAuthorityKey,
   canReconnectDevelopmentBrowser,
+  canRetryProductionAdmission,
   type NativeConnectionSnapshot,
   type NativeHelloContext,
   type NativeRequestHandler,
 } from "./native-port";
+import { reconnectAlarmAction } from "./native-reconnect";
 import { extensionIdentityApproved } from "./release-trust";
 import { buildBrowserReconcileResult, parseBrowserReconcileRequest } from "../protocol/native";
 import { RuntimeStore, type StagedTabCandidate } from "./runtime-store";
@@ -546,7 +548,7 @@ function reconnectDelayMs(attempt: number): number {
   return 270_000 + jitter;
 }
 
-async function scheduleReconnect(guard?: NativeStateGuard): Promise<void> {
+async function scheduleReconnect(guard?: NativeStateGuard, admissionOnly = false): Promise<void> {
   guard?.();
   const currentAttempt = runtimeStore.snapshot.session.reconnectAttempt;
   const nextAttempt = Math.min(currentAttempt + 1, 32);
@@ -557,9 +559,12 @@ async function scheduleReconnect(guard?: NativeStateGuard): Promise<void> {
     nextReconnectAtMs,
   }));
   guard?.();
-  await setPhaseIfAllowed("RETRY_WAIT", guard);
+  // A valid paired-but-inactive port remains available for pairing diagnostics.
+  // It has no browser authority and must be replaced, not promoted, on retry.
+  if (!admissionOnly) await setPhaseIfAllowed("RETRY_WAIT", guard);
   guard?.();
-  chrome.alarms.create(NATIVE_RECONNECT_ALARM, { when: nextReconnectAtMs });
+  await chrome.alarms.create(NATIVE_RECONNECT_ALARM, { when: nextReconnectAtMs });
+  guard?.();
   broadcastPanelState();
 }
 
@@ -602,6 +607,18 @@ async function handleNativeState(connection: NativeConnectionSnapshot, guard: Na
       guard();
       break;
     case "ready":
+      if (canRetryProductionAdmission(connection)) {
+        await setPhaseIfAllowed("RECONCILING", guard);
+        guard();
+        const pendingAt = runtimeStore.snapshot.session.nextReconnectAtMs;
+        if (pendingAt !== null && pendingAt > Date.now()) {
+          await chrome.alarms.create(NATIVE_RECONNECT_ALARM, { when: pendingAt });
+        } else {
+          await scheduleReconnect(guard, true);
+        }
+        guard();
+        break;
+      }
       await runtimeStore.updateSession((session) => ({
         ...session,
         reconnectAttempt: 0,
@@ -625,8 +642,11 @@ async function handleNativeState(connection: NativeConnectionSnapshot, guard: Na
       await setPhaseIfAllowed("DISCONNECTED", guard);
       guard();
       if (connection.reasonCode === "development_reconnect_requested"
+        || connection.reasonCode === "production_admission_retry"
         || (previous.state === "ready" && runtimeStore.snapshot.session.reconnectAttempt === 0)) {
-        await runtimeStore.updateSession((session) => ({ ...session, reconnectAttempt: 1 }));
+        if (connection.reasonCode !== "production_admission_retry") {
+          await runtimeStore.updateSession((session) => ({ ...session, reconnectAttempt: 1 }));
+        }
         guard();
         await connectNative(false, guard);
       } else {
@@ -650,9 +670,28 @@ async function handleNativeState(connection: NativeConnectionSnapshot, guard: Na
 
 async function ensureReconnectAlarm(): Promise<void> {
   const snapshot = runtimeStore.snapshot;
-  if (snapshot.session.connection.state === "ready" || snapshot.session.connection.state === "blocked") return;
+  const admissionOnly = canRetryProductionAdmission(snapshot.session.connection);
+  if ((snapshot.session.connection.state === "ready" && !admissionOnly) || snapshot.session.connection.state === "blocked") return;
   const existing = await chrome.alarms.get(NATIVE_RECONNECT_ALARM);
-  if (!existing) await scheduleReconnect();
+  if (!existing) await scheduleReconnect(undefined, admissionOnly);
+}
+
+async function handleReconnectAlarm(scheduledTime: number): Promise<void> {
+  await ensureBooted();
+  const session = runtimeStore.snapshot.session;
+  const live = nativePort.state;
+  const action = reconnectAlarmAction(live, session.connection, session.nextReconnectAtMs, scheduledTime);
+  if (action === "connect") await connectNative();
+  if (action !== "admission" || !live.connectionId) return;
+  if (nativePort.retryProductionAdmission(live.connectionId)) return;
+  // A pending user request wins over the timer. Retry later only if the exact
+  // inactive connection still exists; a disconnect/revoke/replacement wins.
+  const guard = () => {
+    if (!canRetryProductionAdmission(nativePort.state) || nativePort.state.connectionId !== live.connectionId) {
+      throw new NativeRequestError("The connection changed before retry.", "INVALID_STATE");
+    }
+  };
+  await scheduleReconnect(guard, true);
 }
 
 async function ensureContextMenus(): Promise<void> {
@@ -738,7 +777,7 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
 
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === NATIVE_RECONNECT_ALARM) {
-    void ensureBooted().then(() => connectNative());
+    void handleReconnectAlarm(alarm.scheduledTime).catch(() => undefined);
     return;
   }
   if (alarm.name === SITE_CHALLENGE_EXPIRY_ALARM) {

@@ -1,8 +1,10 @@
+import productionIdentity from "../production-identity.json";
+
 const EXTENSION_ID = /^[a-p]{32}$/u;
 
-// Populated only by a reviewed production release. An unpacked build or an
-// arbitrary extension with the same native-host name must remain pairing-only.
-export const APPROVED_PRODUCTION_EXTENSION_IDS: readonly string[] = Object.freeze([]);
+// Owner-supplied store draft identity, verified against its public package key.
+// Identity recognition alone never grants runtime admission or release trust.
+export const APPROVED_PRODUCTION_EXTENSION_IDS: readonly string[] = Object.freeze([productionIdentity.extension_id]);
 
 export function extensionIdentityApproved(extensionId: unknown): boolean {
   return typeof extensionId === "string"

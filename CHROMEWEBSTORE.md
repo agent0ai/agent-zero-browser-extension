@@ -1,8 +1,9 @@
 # Chrome Web Store and permission record
 
-Last updated: 2026-09-05. Private source repository:
-[agent-zero-browser-extension](https://github.com/TerminallyLazy/agent-zero-browser-extension).
-No store submission or production publication has occurred.
+Last updated: 2026-09-06. Private source repository:
+[agent-zero-browser-extension](https://github.com/agent0ai/agent-zero-browser-extension).
+A 0.1.0 draft item has been uploaded by the owner; no review submission or
+production publication has occurred.
 
 Status: implementation-stage inventory for `a0.browser-bridge.v1`. This is not
 a statement that the extension is ready for publication.
@@ -12,7 +13,12 @@ a statement that the extension is ready for publication.
 - Name: **Agent Zero Chrome Bridge** (production manifest name).
 - Short description: **Agent Zero side panel and user-visible browser task runtime.**
 - Category: Productivity. Primary language: English.
-- Maintainer: TerminallyLazy. Store publisher identity is not yet reserved or verified.
+- Maintainer: TerminallyLazy. Owner-supplied dashboard evidence shows publisher
+  `chadwick.jones` and draft item `nhliclifilepdkoolioacpjpijomfplj`.
+- Public package key is recorded in `src/production-identity.json`; its SHA-256
+  is `d7b82b858b4f3aeeb8e02f9f89ec5fb97e3209a3d742f2d5d62248071df57459`
+  and cryptographically derives that exact item ID. This RSA identity key is
+  not the independent Ed25519 release-catalog/policy signing authority.
 - [Homepage and support](https://github.com/TerminallyLazy/agent-zero-browser-support).
 - [Privacy policy](https://github.com/TerminallyLazy/agent-zero-browser-support/blob/main/PRIVACY.md).
 - [Setup](https://github.com/TerminallyLazy/agent-zero-browser-support/blob/main/SETUP.md).
@@ -73,7 +79,7 @@ publisher contact remain release requirements.
 
 | Version | Date | Status |
 | --- | --- | --- |
-| 0.1.0 | 2026-09-05 | Draft upload candidate only; not submitted or published. |
+| 0.1.0 | 2026-09-05 | Owner uploaded draft; no review submission/publication. Subsequent local build pins its verified public identity and is not yet uploaded. |
 
 ## Local-development installation
 
@@ -85,8 +91,8 @@ native host. The manifest public key fixes this development identity; it is not
 a signing credential or production approval. The options page and side panel
 identify the development channel.
 
-`npm run build` continues to produce `dist` without the development key and uses
-the production native-host name. No stored preference or runtime environment
+`npm run build` produces `dist` with the verified production store public key,
+not the development key, and uses the production native-host name. No stored preference or runtime environment
 switches channels. The development build retains all activation gates; local
 installation, hello negotiation, and pairing alone do not mean browser control
 or complete runtime activation is available. See
@@ -136,7 +142,7 @@ is uncertain.
 |---|---|
 | `nativeMessaging` | Connect to the locally installed Agent Zero browser companion. No page or side-panel context can open this channel. |
 | `storage` | Keep current-generation runtime state and a bounded, redacted safety ledger. Credentials and raw page content are excluded. |
-| `alarms` | Recover a suspended worker and retry an unavailable native host with bounded backoff. It is not a tracking heartbeat. |
+| `alarms` | Recover a suspended worker and retry unavailable connections, including a saved pairing waiting for Agent Zero to enable control. Retries back off automatically and stop once connected or blocked; they do not depend on an open panel and are not tracking heartbeats. |
 | `tabs` | Create and operate exact leased tabs, observe user takeover, and close only eligible agent-created ephemeral tabs. |
 | `tabGroups` | Put agent-created task tabs into one labeled group per window. Claimed user tabs are not regrouped. |
 | `scripting` | Dynamically inject the isolated semantic/cursor runtime into a validated leased HTTP(S) document. There is no static content script. |
@@ -194,6 +200,10 @@ status is provided in the side panel.
 
 ## Unreleased changes
 
+- 2026-09-05: Options and side-panel headers now share Agent Zero's original
+  symbol geometry instead of placeholder A0 initials. Logo previews passed at
+  desktop and narrow widths; refresh listing screenshots after production
+  acceptance. This visual update does not change permissions or runtime scope.
 - The production candidate now includes text-chat queue controls, exact local
   approval decisions, saved-key rotation/revocation and verified current-chat
   file upload. File selection always requires one-use sharing approval; a page
@@ -208,3 +218,10 @@ status is provided in the side panel.
   Installation and diagnostics use disclosures. Store screenshots must be
   refreshed after the production runtime and release scope are approved;
   synthetic development previews are not store evidence.
+- 2026-09-06: Saved production pairings now retry connection checks automatically
+  after browser selection in Agent Zero, without another pairing code or an open
+  Options page. Existing browser actions are never retried by these checks.
+  Setup highlights the Mac companion installer and keeps CLI steps optional.
+  Production screens no longer suggest repeating setup while pairing is saved;
+  actual development packages retain their distinct label and restrictions.
+  No permissions, manifest identity or version change is included in this fix.

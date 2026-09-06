@@ -2,8 +2,22 @@ import { createHash, createPublicKey } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { buildChannelForMode, DEVELOPMENT_EXTENSION_ID, DEVELOPMENT_MANIFEST_KEY } from "./build-channel";
 import { extensionIdentityApproved } from "./background/release-trust";
+import productionIdentity from "./production-identity.json";
+import { createManifest } from "./manifest";
 
 describe("local development build identity", () => {
+  it("pins the verified store key only in the production manifest", () => {
+    const der = Buffer.from(productionIdentity.manifest_public_key, "base64");
+    expect(createPublicKey({ key: der, format: "der", type: "spki" }).asymmetricKeyType).toBe("rsa");
+    const hash = createHash("sha256").update(der).digest("hex");
+    expect(hash).toBe(productionIdentity.public_key_sha256);
+    expect(hash.slice(0, 32).replace(/[0-9a-f]/g, digit => String.fromCharCode(97 + parseInt(digit, 16))))
+      .toBe(productionIdentity.extension_id);
+    expect(createManifest()).toMatchObject({ key: productionIdentity.manifest_public_key });
+    expect(createManifest("local-development")).toMatchObject({ key: DEVELOPMENT_MANIFEST_KEY });
+    expect(productionIdentity.extension_id).not.toBe(DEVELOPMENT_EXTENSION_ID);
+  });
+
   it("derives the pinned extension identity from a valid public manifest key", () => {
     const der = Buffer.from(DEVELOPMENT_MANIFEST_KEY, "base64");
     expect(createPublicKey({ key: der, format: "der", type: "spki" }).asymmetricKeyType).toBe("rsa");

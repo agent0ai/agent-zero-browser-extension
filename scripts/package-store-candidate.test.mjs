@@ -1,15 +1,17 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync, symlinkSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync, symlinkSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { inspectCandidate } from './package-store-candidate.mjs';
+const productionIdentity = JSON.parse(readFileSync(new URL('../src/production-identity.json', import.meta.url), 'utf8'));
 
 function fixture(t) {
   const root = mkdtempSync(join(tmpdir(), 'a0-store-package-test-'));
   t.after(() => rmSync(root, { recursive: true }));
   for (const name of ['assets', 'fonts', 'icons']) mkdirSync(join(root, name));
   const manifest = { manifest_version: 3, name: 'Agent Zero Chrome Bridge', version: '0.1.0',
+    key: productionIdentity.manifest_public_key,
     minimum_chrome_version: '120', description: 'Browser assistance.',
     permissions: ['alarms', 'contextMenus', 'debugger', 'nativeMessaging', 'scripting', 'sidePanel', 'storage', 'tabGroups', 'tabs'],
     host_permissions: ['http://*/*', 'https://*/*'],
@@ -34,7 +36,9 @@ test('candidate package inventories exact allowed files and rejects the developm
   const { root, manifest } = fixture(t);
   assert.equal(inspectCandidate(root).hashes.length, 11);
   writeFileSync(join(root, 'manifest.json'), JSON.stringify({ ...manifest, key: 'development' }));
-  assert.throws(() => inspectCandidate(root), /Development key/);
+  assert.throws(() => inspectCandidate(root), /verified production public key/);
+  writeFileSync(join(root, 'manifest.json'), JSON.stringify({ ...manifest, key: undefined }));
+  assert.throws(() => inspectCandidate(root), /verified production public key/);
 });
 
 test('candidate refuses hidden files, source maps and links rather than publishing them', t => {
