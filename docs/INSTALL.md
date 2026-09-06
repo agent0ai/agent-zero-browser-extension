@@ -1,9 +1,16 @@
 # Install Chrome Bridge once
 
-The Web Store item is still a draft. Use the supplied **unpacked ZIP** to load
+The Web Store item is still a draft. [Download the **unpacked ZIP**](https://github.com/agent0ai/agent-zero-browser-extension/releases/download/extension-v0.1.1-prestore/agent-zero-browser-0.1.1-unpacked.zip) to load
 the extension without building source. Open `START-HERE.html` after extracting
 the entire ZIP; it provides an offline, operating-system-aware walkthrough.
 The separate **store-candidate ZIP** is for the publisher dashboard, not this guide.
+Do not use GitHub's **Source code** ZIP: it is not the ready-to-load package.
+
+Agent Zero must also include the bridge integration from
+[Core PR #1877](https://github.com/agent0ai/agent-zero/pull/1877). An older Docker
+image may not include it. If **Browser settings → Chrome extension** is missing,
+update to an integrated Agent Zero build before creating any pairing codes.
+The CLI integration is tracked in [PR #26](https://github.com/agent0ai/a0-connector/pull/26).
 
 ## What works on each system
 

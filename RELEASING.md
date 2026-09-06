@@ -1,7 +1,8 @@
 # Delivery and release status
 
-This repository remains private pending the licensing/asset review described
-in THIRD_PARTY_NOTICES.md. Production-channel browser control has been exercised
+This repository is public at the owner's explicit request. Public visibility
+does not select a source license or resolve the asset review described in
+THIRD_PARTY_NOTICES.md. Production-channel browser control has been exercised
 with the matching macOS companion and Core integration. Windows/Linux native
 installers and platform acceptance remain incomplete. Local packaging does not
 publish to the Web Store or authorize browser control.
@@ -19,9 +20,9 @@ cross-platform extension folder as proof that all native installers are availabl
 
 - [Chrome extension](https://github.com/agent0ai/agent-zero-browser-extension):
   Manifest V3 worker, Options, side panel, cursor and browser operations.
-- [A0 Connector](https://github.com/TerminallyLazy/a0-connector):
+- [A0 Connector](https://github.com/agent0ai/a0-connector/pull/26):
   A0 CLI and the `native/browser-bridge` companion implementation.
-- [Agent Zero](https://github.com/TerminallyLazy/agent-zero):
+- [Agent Zero](https://github.com/agent0ai/agent-zero/pull/1877):
   Core integration, pairing, browser policy, approvals and Docker/WebUI setup.
 
 The related bridge changes are being developed in isolated worktrees and are
@@ -29,12 +30,10 @@ not implied to exist on those repositories' default branches. Record the exact
 compatible commits before distributing a coordinated release. Do not distribute
 an extension-only build as a complete installation.
 
-The owner authorized an organization repository on 2026-09-05. The
-`agent0ai/agent-zero-browser-extension` repository was created private, preserving
-the existing source visibility, and the baseline history was imported. The
-original `TerminallyLazy` remote and private release assets are retained;
-organization placement does not imply a public release or Chrome Web Store
-approval. Current source revisions must be read back after their scoped push.
+The owner authorized public visibility on 2026-09-06 for
+`agent0ai/agent-zero-browser-extension`. The original `TerminallyLazy` fork is
+unchanged. Public visibility does not imply Chrome Web Store approval.
+Current source revisions must be read back after their scoped push.
 Windows and Linux are required for overhaul completion, not optional future
 support. A Mac-only catalog records that platform's availability, not completion
 of the cross-platform product.
@@ -102,9 +101,8 @@ folders untouched and rejects an existing output directory.
 
 Public user-facing documentation is maintained separately in
 [agent-zero-browser-support](https://github.com/TerminallyLazy/agent-zero-browser-support).
-The privacy and support links require no GitHub login or GitHub Actions. Keep
-the private source repository private unless the owner explicitly changes its
-distribution scope; public documentation is not a source-license grant.
+The privacy, support and organization source links require no GitHub login or
+GitHub Actions. Source visibility is not a source-license grant.
 
 Before enabling a production publishing workflow:
 

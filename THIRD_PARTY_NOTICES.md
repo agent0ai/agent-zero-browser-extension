@@ -1,8 +1,9 @@
 # Third-party assets and source licensing
 
-No project-wide license has been selected for this private development source.
-Public distribution remains blocked until licensing and asset rights are
-confirmed; the font licenses below do not license the extension source.
+The owner authorized making this source repository public on 2026-09-06.
+No project-wide source license has been selected. Public visibility is not a
+blanket license grant; dependency/font licenses apply only to their own works.
+Source licensing and the asset provenance below remain release-review items.
 
 ## Fonts
 

@@ -361,6 +361,10 @@ rebuilds, downloads, registers a native host, changes Chrome preferences/policie
 or grants readiness. Keep the dashboard ZIP separate, with manifest.json at root.
 `docs/INSTALL.md` owns the pre-store user instructions, persistent folder location,
 one-time default/pairing flow, Docker host distinction, and platform availability.
+The organization repository is public by owner authorization. Link users to the
+versioned guided release ZIP, not GitHub's source archive. Visibility does not
+establish source licensing, Web Store approval or Windows/Linux availability.
+Historical development instructions must not direct users to retired Core APIs.
 
 Run from this directory:
 
