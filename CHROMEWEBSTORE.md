@@ -230,3 +230,8 @@ status is provided in the side panel.
   across chats, preserving explicit project choices. Pairing saved does not
   claim the default was saved or that control is ready. Options/panel screenshots
   should be refreshed for this wording; development guidance remains separate.
+- 2026-09-06: Native companion disconnect errors are consumed during Chrome's
+  callback and reduced to fixed private-data-free status codes. Temporary host
+  failures keep bounded retries; forbidden or invalid-protocol connections
+  stay blocked. Raw native error text is not saved or shown. No permissions or
+  release identity changed, and handling an error does not prove recovery.

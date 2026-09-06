@@ -34,6 +34,16 @@ describe("production admission reconnect alarms", () => {
       expect(reconnectAlarmAction(connection, connection, 1, 1)).toBe(reasonCode === "native_host_disconnected" ? "connect" : "none");
     }
   });
+  it("retries host exits/missing installs/start failures but not forbidden or invalid protocol", () => {
+    for (const reasonCode of ["native_host_exited", "native_host_not_found", "native_host_start_failed"]) {
+      const connection: NativeConnectionSnapshot = { state: "disconnected", reasonCode };
+      expect(reconnectAlarmAction(connection, connection, 1, 1)).toBe("connect");
+    }
+    for (const reasonCode of ["native_host_forbidden", "native_host_name_invalid", "native_host_protocol_error"]) {
+      const connection: NativeConnectionSnapshot = { state: "blocked", reasonCode };
+      expect(reconnectAlarmAction(connection, connection, 1, 1)).toBe("none");
+    }
+  });
   it("does not turn the development build into an automatic admission retry", async () => {
     vi.stubGlobal("__A0_LOCAL_DEVELOPMENT__", true);
     vi.resetModules();

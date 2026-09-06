@@ -197,6 +197,14 @@ product-reference material is not included and is not repository instruction.
   advertise those restrictions. Mac packaged setup is primary; CLI instructions
   stay in an optional disclosure. Changing build-channel text never migrates
   development credentials or authorizes production control.
+  Native-port disconnect callbacks synchronously consume Chrome's lastError
+  even for obsolete or intentionally closed ports; generation checks still
+  prevent those callbacks from changing replacement/user-disconnected/blocked
+  state. Classify only fixed Chrome messages into pathless reason codes, never
+  persist or project raw error text. Host exit, missing installation and start
+  failure retain bounded reconnect; forbidden host, invalid name and protocol
+  errors block rather than retry. This handles Chrome's unchecked-error warning,
+  not the underlying native process failure, and grants no runtime authority.
 
 - Keep `minimum_chrome_version` at 120 or newer and preserve only the
   permissions frozen in [`planning/mv3-runtime-v1.md`](planning/mv3-runtime-v1.md).
