@@ -29,6 +29,9 @@ product-reference material is not included and is not repository instruction.
   agent-created, ephemeral lease. Claimed, retained, deliverable, handoff,
   user-taken-over, ambiguous, and orphan tabs remain open.
 - Browser work must continue with zero connected side-panel ports.
+- Agent-created working tabs use a real blue Chrome tab group per browser
+  session, joining only the exact worker-owned group in that window. Never
+  group unrelated user tabs or use the WebUI internal-browser tabs as a substitute.
 
 ## Security and privacy
 

@@ -3985,7 +3985,7 @@ export class BrowserRuntime {
           loadGenerationId: snapshot.lifecycle.loadGenerationId,
           browserSessionId: request.browserSessionId,
           title: typeof request.args.task_title === "string" ? request.args.task_title : "Agent Zero",
-          color: "cyan",
+          color: "blue",
         });
       if (intent.intentId !== lease.groupIntentId) {
         lease = { ...lease, groupIntentId: intent.intentId, revision: lease.revision + 1 };

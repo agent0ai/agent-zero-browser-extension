@@ -389,7 +389,7 @@ describe("leased browser runtime", () => {
       active: false,
     });
     expect(tabsGroup).toHaveBeenCalledWith({ tabIds: 7, createProperties: { windowId: 4 } });
-    expect(tabGroupsUpdate).toHaveBeenCalledWith(11, { title: "Research", color: "cyan" });
+    expect(tabGroupsUpdate).toHaveBeenCalledWith(11, { title: "Research", color: "blue" });
     expect(Object.values(store.snapshot.session.leasesByHandle)).toEqual([
       expect.objectContaining({ origin: "created", disposition: "ephemeral", providerGroupId: 11 }),
     ]);
