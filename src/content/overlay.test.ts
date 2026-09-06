@@ -42,6 +42,9 @@ class FakeDocument {
   createElement(tagName: string) {
     return new FakeElement(tagName);
   }
+  createElementNS(_namespace: string, tagName: string) {
+    return new FakeElement(tagName);
+  }
 }
 
 describe("cursor overlay", () => {
@@ -65,8 +68,21 @@ describe("cursor overlay", () => {
     view.setPosition(45, 60);
     expect(viewport.style.values.get("--a0-cursor-x")).toEqual({ value: "45px", priority: "important" });
     expect(viewport.style.values.get("--a0-cursor-y")).toEqual({ value: "60px", priority: "important" });
+    const pointer = viewport.children[1].children[0];
+    expect(pointer.tagName).toBe("svg");
+    expect(pointer.attributes.get("viewBox")).toBe("0 0 28 34");
+    expect(pointer.attributes.get("focusable")).toBe("false");
+    expect(pointer.children[0].attributes.get("d")).toBe("M3 3 L3 26 L9.5 20.5 L14 31 L19 28.5 L14.5 18 L23 17 Z");
+    expect(pointer.children[0].attributes.get("aria-hidden")).toBe("true");
+    expect(OVERLAY_CSS).toContain("transform: translate3d(-3px, -3px, 0)");
+    expect(OVERLAY_CSS).toContain("drop-shadow(0 0 5px rgba(66, 133, 244, .9))");
+    view.setState("activated", true, true);
+    expect(viewport.dataset).toMatchObject({ state: "activated", reducedMotion: "true" });
+    expect(viewport.children[1].children[1].hidden).toBe(false);
     view.remove();
     expect(host.removed).toBe(true);
+    view.setPosition(100, 100);
+    expect(viewport.style.values.get("--a0-cursor-x")?.value).toBe("45px");
   });
 
   it("defines non-interception, reduced-motion, and forced-colors rules", () => {
@@ -77,5 +93,12 @@ describe("cursor overlay", () => {
     expect(OVERLAY_CSS).toContain("forced-colors: active");
     expect(OVERLAY_CSS).toContain("CanvasText");
     expect(OVERLAY_CSS).toContain("box-shadow: none !important");
+    expect(OVERLAY_CSS).toContain('data-reduced-motion="true"');
+    expect(OVERLAY_CSS).toContain("fill: CanvasText !important; stroke: Canvas !important");
+    expect(OVERLAY_CSS).toContain("animation: a0-cursor-activate 280ms ease-out 1");
+    const ringRule = OVERLAY_CSS.split(".ring {")[1].split("}")[0];
+    expect(ringRule).toContain("opacity: 0;");
+    expect(ringRule).toContain("transform: translate3d(-50%, -50%, 0) scale(.72);");
+    expect(ringRule).not.toMatch(/(?:opacity|transform):[^;]*!important/);
   });
 });
