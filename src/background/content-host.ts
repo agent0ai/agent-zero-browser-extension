@@ -1,4 +1,4 @@
-import contentScriptFile from "../content/index.ts?script";
+import contentScriptFile from "../content/index.ts?script&module";
 import {
   CONTENT_CONTRACT,
   type ContentBindEnvelope,
@@ -104,6 +104,31 @@ function assertCommandResponse(
   }
 }
 
+function awaitContentInstallation<T>(pending: Promise<T>, assertAuthority: () => void, deadlineAtMs: number): Promise<T> {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    let timer: ReturnType<typeof setTimeout>;
+    const finish = (error: unknown, value?: T) => {
+      if (settled) return;
+      settled = true; clearTimeout(timer);
+      if (error) reject(error); else resolve(value as T);
+    };
+    const check = () => {
+      if (settled) return;
+      try { assertAuthority(); }
+      catch (error) { finish(error); return; }
+      timer = setTimeout(check, Math.min(25, Math.max(0, deadlineAtMs - Date.now())));
+    };
+    check();
+    // Import may complete after cancellation, but it can only install an
+    // unbound listener. No late completion may send a bind or page command.
+    pending.then((value) => {
+      try { assertAuthority(); finish(null, value); }
+      catch (error) { finish(error); }
+    }, () => finish(new NativeRequestError("The packaged page runtime could not be loaded.", "DOCUMENT_MISMATCH")));
+  });
+}
+
 export class ContentRuntimeHost {
   private async getExactLeasedTab(lease: TabLease): Promise<chrome.tabs.Tab & { id: number }> {
     let tab: chrome.tabs.Tab;
@@ -155,7 +180,13 @@ export class ContentRuntimeHost {
     }
   }
 
-  async bind(lease: TabLease, assertAuthority: () => void = () => undefined): Promise<TabLease> {
+  async bind(lease: TabLease, assertAuthority: () => void = () => undefined, operationDeadlineAtMs = Date.now() + 5_000): Promise<TabLease> {
+    const deadlineAtMs = Math.min(operationDeadlineAtMs, Date.now() + 5_000);
+    const assertOperationAuthority = assertAuthority;
+    assertAuthority = () => {
+      assertOperationAuthority();
+      if (Date.now() >= deadlineAtMs) throw new NativeRequestError("The page runtime binding deadline elapsed.", "DEADLINE_EXCEEDED");
+    };
     assertAuthority();
     if (lease.state !== "active" || lease.userIntervened) {
       throw new NativeRequestError("The page runtime requires an active exact lease.", "LEASE_CONFLICT");
@@ -184,12 +215,22 @@ export class ContentRuntimeHost {
     assertAuthority();
     await this.assertExactDocumentOrigin(lease, documentId);
     assertAuthority();
-    await chrome.scripting.executeScript({
+    const installed = await awaitContentInstallation(chrome.scripting.executeScript({
       target: { tabId: tab.id, documentIds: [documentId] },
-      files: [contentScriptFile],
       world: "ISOLATED",
-    });
+      // CRXJS's file loader detaches import() and returns before installation.
+      // Chrome waits for this serialized async function's returned Promise.
+      func: async (modulePath: string) => {
+        await import(/* @vite-ignore */ chrome.runtime.getURL(modulePath));
+        return true;
+      },
+      args: [contentScriptFile],
+    }), assertAuthority, deadlineAtMs);
     assertAuthority();
+    if (installed.length !== 1 || installed[0].frameId !== 0
+      || installed[0].documentId !== documentId || installed[0].result !== true) {
+      throw new NativeRequestError("The page runtime did not confirm exact-document installation.", "DOCUMENT_MISMATCH");
+    }
     await this.getExactLeasedTab(lease);
     assertAuthority();
     await this.assertExactDocumentOrigin(lease, documentId);
@@ -211,7 +252,7 @@ export class ContentRuntimeHost {
       contract: CONTENT_CONTRACT,
       kind: "content.bind",
       binding,
-      deadline_ms: Date.now() + 5_000,
+      deadline_ms: deadlineAtMs,
     };
     const response: unknown = await chrome.tabs.sendMessage(tab.id, envelope, { documentId });
     assertAuthority();

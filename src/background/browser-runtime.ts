@@ -2407,6 +2407,7 @@ export class BrowserRuntime {
       lease = this.refreshExactOperationLease(request, lease);
       await this.exactLeasedTab(lease);
       this.assertOperationAuthority(request);
+      lease = await this.followOperationTab(request, lease);
       const target = await this.contentHost.command(lease, {
         commandId: `hover-target:${request.actionId}`,
         operationId: request.opId,
@@ -2585,6 +2586,7 @@ export class BrowserRuntime {
       lease = this.refreshExactOperationLease(request, lease);
       await this.exactLeasedTab(lease);
       this.assertOperationAuthority(request);
+      lease = await this.followOperationTab(request, lease);
       const prepared = await this.contentHost.command(lease, {
         commandId: `click-target:${request.actionId}`,
         operationId: request.opId,
@@ -2882,6 +2884,7 @@ export class BrowserRuntime {
       lease = this.refreshExactOperationLease(request, lease);
       await this.exactLeasedTab(lease);
       this.assertOperationAuthority(request);
+      lease = await this.followOperationTab(request, lease);
       const prepared = await this.contentHost.command(lease, {
         commandId: `type-target:${request.actionId}`,
         operationId: request.opId,
@@ -3637,6 +3640,7 @@ export class BrowserRuntime {
     }
     this.assertNotCanceled(request);
     lease = this.refreshExactLease(request, lease, true);
+    lease = await this.followOperationTab(request, lease);
     await this.transitionMutationRecord(request.actionId, "prepared", "effect_started");
     lease = this.refreshExactLease(request, lease, true);
     assertBeforeDeadline(request);
@@ -3701,6 +3705,29 @@ export class BrowserRuntime {
       if (knownNotApplied) throw error;
       throw new NativeRequestError("The page scroll outcome is unknown.", "OUTCOME_UNKNOWN", "unknown");
     }
+  }
+
+  private async followOperationTab(request: ScopedBrowserPerformRequest, expected: TabLease): Promise<TabLease> {
+    const current = () => {
+      this.assertNotCanceled(request);
+      assertBeforeDeadline(request);
+      const lease = this.refreshExactOperationLease(request, expected);
+      if (lease.userIntervened) {
+        throw new NativeRequestError("User takeover prevents following this browser tab.", "LEASE_CONFLICT");
+      }
+      return lease;
+    };
+    let lease = current();
+    if (!request.display.foreground) return lease;
+    const { tab } = await this.exactLeasedTab(lease);
+    lease = current();
+    if (tab.active) return lease;
+    // Only an explicit operation preference selects this exact owned tab.
+    // Never raise a window, adopt another tab, or retry a focus mutation.
+    await chrome.tabs.update(lease.identity.providerTabId, { active: true });
+    lease = current();
+    await this.exactLeasedTab(lease);
+    return current();
   }
 
   private async exactLeasedTab(lease: TabLease): Promise<{ tab: chrome.tabs.Tab; url: URL }> {
@@ -3786,7 +3813,11 @@ export class BrowserRuntime {
 
   private async bindContentLease(lease: TabLease, request: ScopedBrowserPerformRequest): Promise<TabLease> {
     this.assertOperationAuthority(request);
-    const bound = await this.contentHost.bind(lease, () => this.assertOperationAuthority(request));
+    const bound = await this.contentHost.bind(lease, () => {
+      this.assertNotCanceled(request);
+      assertBeforeDeadline(request);
+      this.assertOperationAuthority(request);
+    }, request.deadlineAtMs);
     this.assertOperationAuthority(request);
     if (
       bound.identity.documentId !== lease.identity.documentId

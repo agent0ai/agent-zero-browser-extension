@@ -20,6 +20,12 @@ product-reference material is not included and is not repository instruction.
 - Content code is dynamically injected only after the worker validates a
   current lease and HTTP(S) site grant. It never receives raw Chrome tab IDs or
   owns cross-tab state.
+  Inject the compile-generated content module path through an exact-document
+  ISOLATED async function that awaits import before binding; CRXJS's detached
+  file loader is not installation readiness. Bound the wait to the earlier of
+  five seconds and the operation deadline, checking cancellation and authority
+  while waiting and after completion. Failed or late installation never sends
+  a bind/command, retries an effect or accepts a caller-provided module path.
 - Agent-facing tab identifiers are opaque, current-generation handles. Never
   infer ownership from URL, title, group, index, opener, or the active tab.
 - A `lease_id` is a distinct ownership identity, never an alias for the
@@ -268,6 +274,12 @@ product-reference material is not included and is not repository instruction.
 - Remote events may update status/badge state but must never force UI open or
   steal focus. Action, command, and context-menu handlers are user-gesture
   entry points for a tab-specific side panel.
+  An authorized open/hover/click/type/scroll/upload operation may follow its
+  exact leased tab only when Core projects `display.foreground: true`. Existing
+  tabs are activated in their current window before cursor movement, with exact
+  lease, document, origin, cancellation and authority checks around awaits.
+  Never raise a window, infer ownership from focus, override user takeover,
+  focus during passive events, or repeat focus for a replayed completed action.
 - Side-panel context data is a bounded, memory-only projection of contexts the
   current paired route already advertised. Context UI requests must cross the
   worker-owned native port under the current READY, activation-attested
